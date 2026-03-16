@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
+<<<<<<< HEAD
 """Starlex - Secure Note-Taking Application Entry Point"""
+=======
+"""TMapp - Secure Note-Taking Application Entry Point"""
+>>>>>>> 07f8357c75001a99bd7ebbb69168f8bb8f818e2d
 
 import sys
 import logging

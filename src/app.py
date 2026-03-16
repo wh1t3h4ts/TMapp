@@ -1,11 +1,17 @@
 """Main application entry point with authentication."""
 import sys
+<<<<<<< HEAD
 import os
+=======
+>>>>>>> 07f8357c75001a99bd7ebbb69168f8bb8f818e2d
 import logging
 from pathlib import Path
 from PyQt6.QtWidgets import QApplication, QMessageBox
 from PyQt6.QtCore import Qt
+<<<<<<< HEAD
 from PyQt6.QtGui import QIcon
+=======
+>>>>>>> 07f8357c75001a99bd7ebbb69168f8bb8f818e2d
 
 from src.core.config import AppConfig
 from src.core.encryption import EncryptionService
@@ -16,23 +22,35 @@ from src.controllers.notebook_controller import NotebookController
 from src.ui.first_run_wizard import FirstRunWizard
 from src.ui.auth_dialog import AuthenticationDialog
 from src.ui.main_window import MainWindow
+<<<<<<< HEAD
 from src.utils.backup_manager import BackupManager
+=======
+>>>>>>> 07f8357c75001a99bd7ebbb69168f8bb8f818e2d
 
 logger = logging.getLogger(__name__)
 
 
 class TMApp:
+<<<<<<< HEAD
     """Main Starlex application with authentication."""
+=======
+    """Main TMapp application with authentication."""
+>>>>>>> 07f8357c75001a99bd7ebbb69168f8bb8f818e2d
     
     def __init__(self):
         """Initialize the application."""
         self.app = QApplication(sys.argv)
+<<<<<<< HEAD
         self.app.setApplicationName("Starlex")
         self.app.setOrganizationName("Starlex")
         # Set application-wide window icon
         _logo = os.path.join(os.path.dirname(__file__), 'logo.png')
         if os.path.exists(_logo):
             self.app.setWindowIcon(QIcon(_logo))
+=======
+        self.app.setApplicationName("TMapp")
+        self.app.setOrganizationName("TMapp")
+>>>>>>> 07f8357c75001a99bd7ebbb69168f8bb8f818e2d
         
         # Enable high DPI scaling
         QApplication.setHighDpiScaleFactorRoundingPolicy(
@@ -44,9 +62,12 @@ class TMApp:
         self.encryption_service = EncryptionService()
         self.database = Database(self.config.db_file)
         
+<<<<<<< HEAD
         # Initialize backup manager
         self.backup_manager = BackupManager(self.config)
         
+=======
+>>>>>>> 07f8357c75001a99bd7ebbb69168f8bb8f818e2d
         # Initialize authentication manager
         self.auth_manager = AuthenticationManager(self.config.app_dir)
         
@@ -57,7 +78,11 @@ class TMApp:
         self.main_window = None
         self.is_authenticated = False
         
+<<<<<<< HEAD
         logger.info("Starlex initialized")
+=======
+        logger.info("TMapp initialized")
+>>>>>>> 07f8357c75001a99bd7ebbb69168f8bb8f818e2d
     
     def run(self):
         """Run the application with authentication flow."""
@@ -78,11 +103,14 @@ class TMApp:
             # If authenticated, show main window
             if self.is_authenticated:
                 logger.info("Authentication successful, showing main window")
+<<<<<<< HEAD
                 
                 # Create automatic backup on startup
                 if self.config.get("auto_backup_enabled", True):
                     self.backup_manager.create_backup(self.config.db_file)
                 
+=======
+>>>>>>> 07f8357c75001a99bd7ebbb69168f8bb8f818e2d
                 self._show_main_window()
                 return self.app.exec()
             else:
@@ -135,9 +163,15 @@ class TMApp:
         def on_auth_success(encryption_key: bytes):
             """Handle successful authentication."""
             self.is_authenticated = True
+<<<<<<< HEAD
             self.encryption_service._cached_key = encryption_key
             self.encryption_service._cached_salt = self.auth_manager.get_stored_salt()
             self.encryption_service._cached_password = auth_dialog.entered_password
+=======
+            # Cache the encryption key in encryption service
+            self.encryption_service._cached_key = encryption_key
+            self.encryption_service._cached_salt = self.auth_manager.get_stored_salt()
+>>>>>>> 07f8357c75001a99bd7ebbb69168f8bb8f818e2d
             logger.info("Encryption key cached for session")
         
         auth_dialog.authentication_successful.connect(on_auth_success)

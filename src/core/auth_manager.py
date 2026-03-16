@@ -175,6 +175,7 @@ class AuthenticationManager:
             return 0
         return int(self.lockout_until - time.time())
     
+<<<<<<< HEAD
     def get_stored_salt(self) -> Optional[bytes]:
         """Retrieve the stored salt from auth file."""
         try:
@@ -189,6 +190,8 @@ class AuthenticationManager:
             logger.error(f"Failed to retrieve salt: {e}")
             return None
     
+=======
+>>>>>>> 07f8357c75001a99bd7ebbb69168f8bb8f818e2d
     def validate_password_strength(self, password: str) -> Tuple[bool, str]:
         """
         Validate password meets security requirements.

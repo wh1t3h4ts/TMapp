@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 class EncryptionService:
     """Secure encryption service using AES-256-GCM with Argon2id key derivation."""
     
+<<<<<<< HEAD
     KEY_SIZE = 32
     SALT_SIZE = 16
     NONCE_SIZE = 12
@@ -21,12 +22,26 @@ class EncryptionService:
     ARGON2_TIME_COST = 3
     ARGON2_MEMORY_COST = 102400  # 100 MB
     ARGON2_LANES = 4
+=======
+    KEY_SIZE = 32  # 256 bits for AES-256
+    SALT_SIZE = 16  # 128 bits
+    NONCE_SIZE = 12  # 96 bits (recommended for GCM)
+    TAG_SIZE = 16  # 128 bits authentication tag
+    
+    # Argon2id parameters
+    ARGON2_TIME_COST = 2
+    ARGON2_MEMORY_COST = 65536  # 64 MB
+    ARGON2_LANES = 4  # parallelism
+>>>>>>> 07f8357c75001a99bd7ebbb69168f8bb8f818e2d
     
     def __init__(self):
         """Initialize encryption service."""
         self._cached_key: Optional[bytes] = None
         self._cached_salt: Optional[bytes] = None
+<<<<<<< HEAD
         self._cached_password: Optional[str] = None  # Store password for decryption
+=======
+>>>>>>> 07f8357c75001a99bd7ebbb69168f8bb8f818e2d
         logger.info("EncryptionService initialized")
     
     def derive_key(self, password: str, salt: Optional[bytes] = None) -> Tuple[bytes, bytes]:
@@ -64,7 +79,10 @@ class EncryptionService:
         try:
             self._cached_key, salt_used = self.derive_key(password, salt)
             self._cached_salt = salt_used
+<<<<<<< HEAD
             self._cached_password = password  # Cache password for flexible decryption
+=======
+>>>>>>> 07f8357c75001a99bd7ebbb69168f8bb8f818e2d
             logger.info("Encryption key cached")
             return salt_used
         except Exception as e:
@@ -80,8 +98,11 @@ class EncryptionService:
             if self._cached_salt:
                 self._cached_salt = b'\x00' * len(self._cached_salt)
                 self._cached_salt = None
+<<<<<<< HEAD
             if self._cached_password:
                 self._cached_password = None
+=======
+>>>>>>> 07f8357c75001a99bd7ebbb69168f8bb8f818e2d
             logger.info("Cached key cleared")
         except Exception as e:
             logger.error(f"Error clearing key: {str(e)}")
@@ -94,7 +115,10 @@ class EncryptionService:
         if password:
             key, salt = self.derive_key(password)
         elif self._cached_key and self._cached_salt:
+<<<<<<< HEAD
             # Use cached key and salt for all notes in session
+=======
+>>>>>>> 07f8357c75001a99bd7ebbb69168f8bb8f818e2d
             key = self._cached_key
             salt = self._cached_salt
         else:
@@ -130,6 +154,7 @@ class EncryptionService:
             nonce = encrypted_data[self.SALT_SIZE:self.SALT_SIZE + self.NONCE_SIZE]
             ciphertext = encrypted_data[self.SALT_SIZE + self.NONCE_SIZE:]
             
+<<<<<<< HEAD
             # Always use password-based decryption to handle any salt
             if password:
                 key, _ = self.derive_key(password, salt)
@@ -142,6 +167,18 @@ class EncryptionService:
             
             aesgcm = AESGCM(key)
             plaintext = aesgcm.decrypt(nonce, ciphertext, None)
+=======
+            if password:
+                key, _ = self.derive_key(password, salt)
+            elif self._cached_key and self._cached_salt == salt:
+                key = self._cached_key
+            else:
+                raise ValueError("No password or matching cached key")
+            
+            aesgcm = AESGCM(key)
+            plaintext = aesgcm.decrypt(nonce, ciphertext, None)
+            logger.info("Data decrypted")
+>>>>>>> 07f8357c75001a99bd7ebbb69168f8bb8f818e2d
             return plaintext.decode('utf-8')
         
         except InvalidTag:

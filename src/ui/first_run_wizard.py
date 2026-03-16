@@ -1,16 +1,28 @@
+<<<<<<< HEAD
 """First-run wizard for Starlex password setup."""
 import logging
 import os
+=======
+"""First-run wizard for TMapp password setup."""
+import logging
+>>>>>>> 07f8357c75001a99bd7ebbb69168f8bb8f818e2d
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
                               QLineEdit, QPushButton, QCheckBox, QProgressBar, 
                               QFrame, QWidget, QGridLayout)
 from PyQt6.QtCore import Qt, pyqtSignal
+<<<<<<< HEAD
 from PyQt6.QtGui import QFont, QPixmap, QIcon
 
 logger = logging.getLogger(__name__)
 
 _LOGO_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'logo.png')
 
+=======
+from PyQt6.QtGui import QFont
+
+logger = logging.getLogger(__name__)
+
+>>>>>>> 07f8357c75001a99bd7ebbb69168f8bb8f818e2d
 
 class FirstRunWizard(QDialog):
     """
@@ -50,17 +62,24 @@ class FirstRunWizard(QDialog):
     
     def _setup_ui(self):
         """Create the password setup UI."""
+<<<<<<< HEAD
         self.setWindowTitle("Starlex - Setup")
         self.setMinimumSize(550, 580)
         self.setMaximumSize(550, 580)
         if os.path.exists(_LOGO_PATH):
             self.setWindowIcon(QIcon(_LOGO_PATH))
+=======
+        self.setWindowTitle("TMapp - Setup")
+        self.setMinimumSize(550, 580)
+        self.setMaximumSize(550, 580)
+>>>>>>> 07f8357c75001a99bd7ebbb69168f8bb8f818e2d
         
         main_layout = QVBoxLayout()
         main_layout.setSpacing(16)
         main_layout.setContentsMargins(40, 30, 40, 30)
         
         # ===== HEADER =====
+<<<<<<< HEAD
         # Logo image
         logo = QLabel()
         logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -75,6 +94,15 @@ class FirstRunWizard(QDialog):
         
         # Title
         title = QLabel("Welcome to Starlex")
+=======
+        # Logo/Icon
+        logo = QLabel("🔐")
+        logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        logo.setStyleSheet("font-size: 56px; margin: 8px;")
+        
+        # Title
+        title = QLabel("Welcome to TMapp")
+>>>>>>> 07f8357c75001a99bd7ebbb69168f8bb8f818e2d
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setFont(QFont("Segoe UI", 24, QFont.Weight.Bold))
         
@@ -386,6 +414,7 @@ class FirstRunWizard(QDialog):
         return ""
     
     def _apply_theme(self):
+<<<<<<< HEAD
         """Apply cyberpunk dark theme to wizard."""
         self.setStyleSheet("""
         QDialog {
@@ -519,3 +548,107 @@ class FirstRunWizard(QDialog):
             color: #475569;
         }
         """)
+=======
+        """Apply dark theme to wizard."""
+        stylesheet = """
+        QDialog {
+            background-color: #0D1117;
+        }
+        
+        QLabel {
+            color: #F0F6FC;
+        }
+        
+        QLabel#subtitle {
+            color: #8B949E;
+        }
+        
+        QLabel#requirement {
+            padding: 2px 8px;
+        }
+        
+        QLabel#match_label {
+            padding: 4px;
+            margin-top: 4px;
+        }
+        
+        QFrame#separator {
+            color: #30363D;
+        }
+        
+        QLineEdit {
+            background-color: #161B22;
+            color: #F0F6FC;
+            border: 2px solid #30363D;
+            border-radius: 8px;
+            padding: 10px 14px;
+        }
+        
+        QLineEdit:focus {
+            border-color: #2563EB;
+        }
+        
+        QPushButton#toggle_btn {
+            background-color: #161B22;
+            border: 2px solid #30363D;
+            border-radius: 8px;
+            font-size: 20px;
+        }
+        
+        QPushButton#toggle_btn:hover {
+            background-color: #21262D;
+            border-color: #2563EB;
+        }
+        
+        QProgressBar {
+            border: 1px solid #30363D;
+            border-radius: 3px;
+            background-color: #161B22;
+        }
+        
+        QProgressBar::chunk {
+            border-radius: 2px;
+        }
+        
+        QCheckBox {
+            color: #F0F6FC;
+            spacing: 8px;
+        }
+        
+        QCheckBox::indicator {
+            width: 18px;
+            height: 18px;
+            border: 2px solid #30363D;
+            border-radius: 4px;
+            background-color: #161B22;
+        }
+        
+        QCheckBox::indicator:checked {
+            background-color: #2563EB;
+            border-color: #2563EB;
+        }
+        
+        QPushButton#continue_btn {
+            background-color: #2563EB;
+            color: #FFFFFF;
+            border: none;
+            border-radius: 8px;
+            padding: 10px 32px;
+        }
+        
+        QPushButton#continue_btn:hover {
+            background-color: #3973f7;
+        }
+        
+        QPushButton#continue_btn:pressed {
+            background-color: #1746a2;
+        }
+        
+        QPushButton#continue_btn:disabled {
+            background-color: #2D333B;
+            color: #6E7681;
+        }
+        """
+        
+        self.setStyleSheet(stylesheet)
+>>>>>>> 07f8357c75001a99bd7ebbb69168f8bb8f818e2d

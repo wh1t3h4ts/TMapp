@@ -1,15 +1,23 @@
 """Authentication dialog for password entry."""
 import logging
+<<<<<<< HEAD
 import os
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
                               QLineEdit, QPushButton, QFrame, QApplication)
 from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation, QPoint, pyqtSignal
 from PyQt6.QtGui import QFont, QPixmap, QIcon
+=======
+from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
+                              QLineEdit, QPushButton, QFrame, QApplication)
+from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation, QPoint, pyqtSignal
+from PyQt6.QtGui import QFont
+>>>>>>> 07f8357c75001a99bd7ebbb69168f8bb8f818e2d
 
 from src.core.auth_manager import AuthenticationManager, AccountLockedError, AuthenticationError
 
 logger = logging.getLogger(__name__)
 
+<<<<<<< HEAD
 import sys as _sys
 
 def _resource_path(relative: str) -> str:
@@ -18,6 +26,8 @@ def _resource_path(relative: str) -> str:
 
 _LOGO_PATH = _resource_path('src/logo.png')
 
+=======
+>>>>>>> 07f8357c75001a99bd7ebbb69168f8bb8f818e2d
 
 class AuthenticationDialog(QDialog):
     """
@@ -32,7 +42,10 @@ class AuthenticationDialog(QDialog):
         
         self.auth_manager = auth_manager
         self.encryption_key = None
+<<<<<<< HEAD
         self.entered_password = None  # Store password for migration
+=======
+>>>>>>> 07f8357c75001a99bd7ebbb69168f8bb8f818e2d
         
         self._setup_ui()
         self._apply_theme()
@@ -52,16 +65,23 @@ class AuthenticationDialog(QDialog):
     
     def _setup_ui(self):
         """Create authentication dialog UI."""
+<<<<<<< HEAD
         self.setWindowTitle("Starlex - Authentication")
         self.setMinimumSize(500, 600)
         self.setMaximumSize(500, 600)
         if os.path.exists(_LOGO_PATH):
             self.setWindowIcon(QIcon(_LOGO_PATH))
+=======
+        self.setWindowTitle("TMapp - Authentication")
+        self.setMinimumSize(500, 600)
+        self.setMaximumSize(500, 600)
+>>>>>>> 07f8357c75001a99bd7ebbb69168f8bb8f818e2d
         
         layout = QVBoxLayout()
         layout.setSpacing(16)
         layout.setContentsMargins(40, 40, 40, 40)
         
+<<<<<<< HEAD
         # Logo image — replaces the Starlex text title
         logo_label = QLabel()
         logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -74,6 +94,18 @@ class AuthenticationDialog(QDialog):
             logo_label.setText("Starlex")
             logo_label.setFont(QFont("Segoe UI", 32, QFont.Weight.Bold))
             logo_label.setStyleSheet("margin: 8px 0 16px 0;")
+=======
+        # Logo/Icon
+        logo_label = QLabel("🔒")
+        logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        logo_label.setStyleSheet("font-size: 72px; margin: 16px;")
+        
+        # Title
+        title = QLabel("TMapp")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setFont(QFont("Segoe UI", 32, QFont.Weight.Bold))
+        title.setStyleSheet("margin: 8px;")
+>>>>>>> 07f8357c75001a99bd7ebbb69168f8bb8f818e2d
         
         subtitle = QLabel("Secure Notes")
         subtitle.setObjectName("subtitle")
@@ -138,6 +170,10 @@ class AuthenticationDialog(QDialog):
         # Add all to main layout
         layout.addStretch()
         layout.addWidget(logo_label)
+<<<<<<< HEAD
+=======
+        layout.addWidget(title)
+>>>>>>> 07f8357c75001a99bd7ebbb69168f8bb8f818e2d
         layout.addWidget(subtitle)
         layout.addWidget(password_label)
         layout.addLayout(password_container)
@@ -174,9 +210,14 @@ class AuthenticationDialog(QDialog):
             success, key = self.auth_manager.verify_master_password(password)
             
             if success:
+<<<<<<< HEAD
                 # Success - store key and password, then close dialog
                 self.encryption_key = key
                 self.entered_password = password  # Store for migration
+=======
+                # Success - store key and close dialog
+                self.encryption_key = key
+>>>>>>> 07f8357c75001a99bd7ebbb69168f8bb8f818e2d
                 self.authentication_successful.emit(key)
                 logger.info("Authentication successful")
                 self.accept()
@@ -234,10 +275,13 @@ class AuthenticationDialog(QDialog):
         else:
             self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
     
+<<<<<<< HEAD
     def get_entered_password(self) -> str:
         """Get the entered password for migration purposes."""
         return self.entered_password
     
+=======
+>>>>>>> 07f8357c75001a99bd7ebbb69168f8bb8f818e2d
     def set_ui_enabled(self, enabled: bool):
         """Enable/disable UI elements."""
         self.password_input.setEnabled(enabled)
@@ -255,6 +299,7 @@ class AuthenticationDialog(QDialog):
         event.ignore()  # User must authenticate or exit explicitly
     
     def _apply_theme(self):
+<<<<<<< HEAD
         """Apply cyberpunk dark theme to authentication dialog."""
         self.setStyleSheet("""
         QDialog {
@@ -357,3 +402,88 @@ class AuthenticationDialog(QDialog):
             font-size: 12px;
         }
         """)
+=======
+        """Apply dark theme to authentication dialog."""
+        stylesheet = """
+        QDialog {
+            background-color: #0D1117;
+        }
+        
+        QLabel {
+            color: #F0F6FC;
+        }
+        
+        QLabel#subtitle {
+            color: #8B949E;
+        }
+        
+        QLineEdit {
+            background-color: #161B22;
+            color: #F0F6FC;
+            border: 2px solid #30363D;
+            border-radius: 8px;
+            padding: 12px 16px;
+            font-size: 14px;
+        }
+        
+        QLineEdit:focus {
+            border-color: #2563EB;
+        }
+        
+        QPushButton#unlock_btn {
+            background-color: #2563EB;
+            color: #FFFFFF;
+            border: none;
+            border-radius: 8px;
+            padding: 12px 32px;
+        }
+        
+        QPushButton#unlock_btn:hover {
+            background-color: #3973f7;
+        }
+        
+        QPushButton#unlock_btn:pressed {
+            background-color: #1746a2;
+        }
+        
+        QPushButton#unlock_btn:disabled {
+            background-color: #2D333B;
+            color: #6E7681;
+        }
+        
+        QPushButton#toggle_visibility_btn {
+            background-color: #161B22;
+            border: 2px solid #30363D;
+            border-radius: 8px;
+            font-size: 20px;
+        }
+        
+        QPushButton#toggle_visibility_btn:hover {
+            background-color: #21262D;
+            border-color: #2563EB;
+        }
+        
+        QPushButton#exit_btn {
+            background-color: transparent;
+            color: #8B949E;
+            border: 1px solid #30363D;
+            border-radius: 6px;
+            padding: 8px 24px;
+        }
+        
+        QPushButton#exit_btn:hover {
+            color: #F0F6FC;
+            border-color: #2563EB;
+        }
+        
+        QLabel#error_label {
+            color: #FFFFFF;
+            background-color: rgba(220, 38, 38, 0.15);
+            border: 1px solid #DC2626;
+            border-radius: 6px;
+            padding: 12px;
+        }
+        """
+        
+        self.setStyleSheet(stylesheet)
+>>>>>>> 07f8357c75001a99bd7ebbb69168f8bb8f818e2d

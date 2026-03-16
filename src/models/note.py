@@ -85,10 +85,13 @@ class Note:
         self.completed_tasks = len([t for t in tasks if t.lower() == '[x]'])
         self.has_tasks = self.total_tasks > 0
     
+<<<<<<< HEAD
     def get_plain_text(self) -> str:
         """Get plain text content."""
         return self.content
     
+=======
+>>>>>>> 07f8357c75001a99bd7ebbb69168f8bb8f818e2d
     def to_dict(self) -> dict:
         """Convert to dictionary for storage."""
         return {

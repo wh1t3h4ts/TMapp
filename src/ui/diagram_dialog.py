@@ -1,78 +1,96 @@
-"""Diagram editor dialog — wraps DrawingCanvas, returns base64 PNG on accept."""
+"""Diagram editor — full-screen QMainWindow, app theme, rich toolbar."""
 import base64
 import logging
-from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout,
-                              QPushButton, QLabel, QSizePolicy)
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont
-
-from src.ui.drawing_canvas import DrawingCanvas
+from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+                              QPushButton, QLabel, QApplication)
+from PyQt6.QtCore import Qt, QEventLoop
+from PyQt6.QtGui import QFont, QIcon
+import os, sys
 
 logger = logging.getLogger(__name__)
 
+def _resource_path(rel):
+    base = getattr(sys, '_MEIPASS', os.path.dirname(os.path.dirname(__file__)))
+    return os.path.join(base, rel)
 
-class DiagramDialog(QDialog):
-    """Modal dialog for creating / editing diagrams."""
+_LOGO_PATH = _resource_path('src/logo.png')
+
+
+class DiagramDialog(QMainWindow):
+    """Full-screen diagram editor with app theme."""
+
+    class DialogCode:
+        Accepted = 1
+        Rejected = 0
 
     def __init__(self, existing_data: str = "", parent=None):
         super().__init__(parent)
         self.setWindowTitle("TMapp — Diagram Editor")
-        self.setMinimumSize(1100, 700)
-        self.resize(1200, 750)
+        self.setMinimumSize(900, 600)
+        if os.path.exists(_LOGO_PATH):
+            self.setWindowIcon(QIcon(_LOGO_PATH))
+
+        self._result = self.DialogCode.Rejected
         self._png_b64: str = ""
         self._diagram_json: str = existing_data
+
         self._setup_ui()
+        self._apply_theme()
+
         if existing_data:
             self.canvas.load_diagram_data(existing_data)
 
-    def _setup_ui(self):
-        self.setStyleSheet("""
-            QDialog { background: #0D1117; color: #F0F6FC; }
-            QPushButton {
-                background: #2563EB; color: white; border: none;
-                border-radius: 6px; padding: 8px 20px; font-size: 13px;
-            }
-            QPushButton:hover { background: #3973f7; }
-            QPushButton#cancel {
-                background: transparent; border: 1px solid #30363D; color: #8B949E;
-            }
-            QPushButton#cancel:hover { border-color: #2563EB; color: #F0F6FC; }
-        """)
+        self.showMaximized()
 
-        layout = QVBoxLayout(self)
+    def _setup_ui(self):
+        from src.ui.drawing_canvas import DrawingCanvas
+
+        central = QWidget()
+        self.setCentralWidget(central)
+
+        layout = QVBoxLayout(central)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # Header
+        # ── header bar ────────────────────────────────────────────────────────
         header = QWidget()
-        header.setStyleSheet("background: #161B22; border-bottom: 1px solid #21262D;")
+        header.setObjectName("editorTopBar")
+        header.setFixedHeight(52)
         hl = QHBoxLayout(header)
-        hl.setContentsMargins(16, 10, 16, 10)
+        hl.setContentsMargins(16, 0, 16, 0)
+        hl.setSpacing(10)
 
         title = QLabel("Diagram Editor")
-        title.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
-        title.setStyleSheet("color: #F0F6FC; background: transparent;")
+        title.setFont(QFont("Segoe UI", 13, QFont.Weight.Bold))
+        title.setObjectName("panelTitle")
         hl.addWidget(title)
 
-        hint = QLabel("Draw shapes, connect with arrows, add labels")
-        hint.setStyleSheet("color: #8B949E; font-size: 12px; background: transparent;")
+        hint = QLabel("Draw shapes · connect with arrows · add labels · Scroll to zoom")
+        hint.setObjectName("breadcrumb")
+        hint.setFont(QFont("Segoe UI", 11))
         hl.addWidget(hint)
         hl.addStretch()
 
         btn_cancel = QPushButton("Cancel")
-        btn_cancel.setObjectName("cancel")
+        btn_cancel.setObjectName("secondaryButton")
+        btn_cancel.setFixedHeight(34)
         btn_cancel.clicked.connect(self.reject)
         hl.addWidget(btn_cancel)
 
         btn_insert = QPushButton("Insert into Note")
+        btn_insert.setFixedHeight(34)
         btn_insert.clicked.connect(self._accept)
         hl.addWidget(btn_insert)
 
         layout.addWidget(header)
 
-        # Canvas
+        # ── canvas ────────────────────────────────────────────────────────────
         self.canvas = DrawingCanvas(self)
-        layout.addWidget(self.canvas)
+        layout.addWidget(self.canvas, stretch=1)
+
+    def _apply_theme(self):
+        from src.ui.theme_manager import ThemeManager
+        self.setStyleSheet(ThemeManager().get_stylesheet())
 
     def _accept(self):
         try:
@@ -84,12 +102,32 @@ class DiagramDialog(QDialog):
             logger.error(f"Failed to export diagram: {e}")
             self.reject()
 
+    # ── QDialog-compatible shim ───────────────────────────────────────────────
+    def exec(self) -> int:
+        self.show()
+        self._event_loop = QEventLoop()
+        self._event_loop.exec()
+        return self._result
+
+    def accept(self):
+        self._result = self.DialogCode.Accepted
+        self.close()
+        if hasattr(self, '_event_loop'):
+            self._event_loop.quit()
+
+    def reject(self):
+        self._result = self.DialogCode.Rejected
+        self.close()
+        if hasattr(self, '_event_loop'):
+            self._event_loop.quit()
+
+    def closeEvent(self, event):
+        event.accept()
+        if hasattr(self, '_event_loop'):
+            self._event_loop.quit()
+
     def get_png_base64(self) -> str:
         return self._png_b64
 
     def get_diagram_json(self) -> str:
         return self._diagram_json
-
-
-# Make QWidget importable at module level for type hints
-from PyQt6.QtWidgets import QWidget

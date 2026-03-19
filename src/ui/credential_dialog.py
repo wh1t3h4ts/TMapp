@@ -10,11 +10,10 @@ from typing import Optional
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel,
     QLineEdit, QPushButton, QComboBox, QDialogButtonBox,
-    QWidget, QProgressBar, QMessageBox, QScrollArea, QFrame,
+    QWidget, QProgressBar, QMessageBox, QFrame, QApplication,
 )
-from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QFont, QClipboard
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtGui import QFont, QCursor
 
 from src.controllers.credential_controller import CredentialController
 from src.models.credential import Credential
@@ -27,6 +26,24 @@ logger = logging.getLogger(__name__)
 _CATEGORIES = ["web", "ssh", "api", "email", "database", "wifi", "other"]
 _REVEAL_MS  = 10_000   # auto-hide after 10 s
 _CLIP_MS    = 30_000   # clear clipboard after 30 s
+
+
+class _IconBtn(QLabel):
+    """Emoji button using QLabel — immune to QPushButton stylesheet overrides."""
+    clicked = pyqtSignal()
+
+    def __init__(self, emoji: str, tooltip: str, parent=None):
+        super().__init__(emoji, parent)
+        self.setToolTip(tooltip)
+        self.setFixedSize(28, 28)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.setStyleSheet("font-size: 16px; border-radius: 6px; padding: 2px; background-color: #1e2e1a;")
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+        super().mousePressEvent(event)
 
 
 class _MaskedField(QWidget):
@@ -43,17 +60,11 @@ class _MaskedField(QWidget):
         self.edit.setObjectName("credField")
         layout.addWidget(self.edit, stretch=1)
 
-        self.btn_reveal = QPushButton("👁")
-        self.btn_reveal.setObjectName("credIconBtn")
-        self.btn_reveal.setFixedSize(28, 28)
-        self.btn_reveal.setToolTip("Reveal (auto-hides in 10 s)")
+        self.btn_reveal = _IconBtn("👁", "Reveal (auto-hides in 10 s)")
         self.btn_reveal.clicked.connect(self._reveal)
         layout.addWidget(self.btn_reveal)
 
-        self.btn_copy = QPushButton("⎘")
-        self.btn_copy.setObjectName("credIconBtn")
-        self.btn_copy.setFixedSize(28, 28)
-        self.btn_copy.setToolTip("Copy (clears clipboard in 30 s)")
+        self.btn_copy = _IconBtn("📋", "Copy (clears clipboard in 30 s)")
         self.btn_copy.clicked.connect(self._copy)
         layout.addWidget(self.btn_copy)
 

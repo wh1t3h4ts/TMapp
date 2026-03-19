@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                               QListWidget, QListWidgetItem, QPushButton,
                               QToolButton, QMenu, QLineEdit, QSizePolicy,
                               QFileDialog, QInputDialog, QFrame, QScrollArea,
-                              QDockWidget)
+                              QDockWidget, QApplication)
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QSize, QPropertyAnimation, QEasingCurve
 from PyQt6.QtGui import QAction, QKeySequence, QFont, QShortcut, QPixmap, QIcon
 
@@ -68,7 +68,10 @@ class MainWindow(QMainWindow):
         self._setup_auto_save()
         self._setup_auto_lock()
         self._load_data()
-        
+        # Apply mode after event loop starts so showMaximized() doesn't override visibility
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(0, self._apply_app_mode)
+
         logger.info("Main window initialized with professional UI")
     
     # ── RESPONSIVE BREAKPOINT ─────────────────────────────────────────────────
@@ -113,8 +116,7 @@ class MainWindow(QMainWindow):
     def _setup_ui(self):
         """Full-viewport 3-column workstation layout."""
         self.setWindowTitle("TMapp — Secure Notes")
-        self.setMinimumSize(760, 560)   # allow compact/tablet sizes
-        # Set window icon
+        self.setMinimumSize(760, 560)
         if _os.path.exists(_LOGO_PATH):
             self.setWindowIcon(QIcon(_LOGO_PATH))
 
@@ -900,6 +902,69 @@ class MainWindow(QMainWindow):
         self._apply_theme()
         logger.info(f"Theme changed to: {theme_mode}")
     
+
+
+
+    def _apply_app_mode(self):
+        """Show/hide panels based on the configured app mode."""
+        mode = self.config.get("app_mode", "both")
+        notes_on     = mode in ("notes", "both")
+        passwords_on = mode in ("passwords", "both")
+
+        if hasattr(self, 'vault_btn'):
+            self.vault_btn.setVisible(passwords_on)
+
+        # ── hide/show entire menu sections ────────────────────────────────────
+        for action in self.menuBar().actions():
+            txt = action.text()
+            if txt == "File":
+                for a in action.menu().actions():
+                    # hide Export/Import/Clear when notes are off
+                    if not notes_on and a.text() in ("Export", "Import", "Clear All Notes…"):
+                        a.setVisible(False)
+            elif txt == "Edit":
+                for a in action.menu().actions():
+                    if not notes_on and a.text() in ("Insert Image…", "Insert Diagram…"):
+                        a.setVisible(False)
+                    if not passwords_on and "Credential" in a.text():
+                        a.setVisible(False)
+            elif txt in ("View", "Help"):
+                pass  # always visible
+
+        if not notes_on:
+            # Hide all notes UI
+            self.left_panel.setVisible(False)
+            self.editor_panel.setVisible(False)
+            self.right_panel.setVisible(False)
+            self.main_splitter.setVisible(False)
+
+            # Hide notes-specific top bar widgets
+            if hasattr(self, 'search_box'):
+                self.search_box.setVisible(False)
+
+            # Build a centered credential panel matching auth dialog width
+            from src.ui.credential_panel import CredentialPanel
+            from PyQt6.QtWidgets import QHBoxLayout, QWidget
+
+            wrapper = QWidget()
+            wrapper.setObjectName("credWrapper")
+            h = QHBoxLayout(wrapper)
+            h.setContentsMargins(0, 0, 0, 0)
+            h.setSpacing(0)
+
+            cred = CredentialPanel(self.credential_controller)
+            cred.count_changed.connect(self._on_credential_count_changed)
+
+            h.addStretch(1)
+            h.addWidget(cred, 2)   # same 1:2:1 ratio as auth dialog
+            h.addStretch(1)
+
+            central = self.centralWidget()
+            central.layout().replaceWidget(self.main_splitter, wrapper)
+            wrapper.setVisible(True)
+
+        logger.info(f"App mode applied: {mode}")
+
     def _load_data(self):
         """Load initial data."""
         try:
@@ -1207,7 +1272,12 @@ class MainWindow(QMainWindow):
                 for i in range(self.notes_list.count()):
                     item = self.notes_list.item(i)
                     if item.data(Qt.ItemDataRole.UserRole) == self.current_note.id:
-                        item.setText(self.current_note.title)
+                        old = self.notes_list.itemWidget(item)
+                        if old:
+                            old.deleteLater()
+                        card = self._make_note_card(self.current_note)
+                        item.setSizeHint(card.sizeHint())
+                        self.notes_list.setItemWidget(item, card)
                         break
                 
                 logger.info(f"Saved note: {self.current_note.id}")
@@ -1567,6 +1637,8 @@ class MainWindow(QMainWindow):
         from src.utils.export_import import ExportImportManager
         mgr = ExportImportManager(self.note_controller, self.encryption_service)
 
+        count, err = 0, ""
+
         if fmt == "json":
             path, _ = QFileDialog.getOpenFileName(
                 self, "Import from JSON", "", "JSON files (*.json)")
@@ -1589,7 +1661,7 @@ class MainWindow(QMainWindow):
             return
 
         if err:
-            QMessageBox.warning(self, "Import Failed", err)
+            QMessageBox.warning(self, "Import Failed", f"Import error:\n{err}")
             return
 
         self._show_all_notes()
@@ -1600,7 +1672,6 @@ class MainWindow(QMainWindow):
                 f"Successfully imported {count} note(s).\n"
                 "They are now visible in All Notes."
             )
-            # Select the first imported note so user can see it immediately
             if self.notes_list.count() > 0:
                 first_item = self.notes_list.item(0)
                 self.notes_list.setCurrentItem(first_item)
@@ -1609,23 +1680,28 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Import", "No notes were imported.")
 
     def _export_notes(self, fmt: str):
-        """Export all non-trashed notes in the chosen format."""
+        """Export the currently selected note in the chosen format."""
         from src.utils.export_import import ExportImportManager
-        notes = self.note_controller.get_all_notes()
-        if not notes:
-            QMessageBox.information(self, "Export", "No notes to export.")
+
+        if not self.current_note:
+            QMessageBox.information(self, "Export", "No note is currently open. Select a note first.")
+            return
+
+        note = self.note_controller.get_note(self.current_note.id)
+        if not note:
+            QMessageBox.warning(self, "Export", "Could not load the current note.")
             return
 
         mgr = ExportImportManager(self.note_controller, self.encryption_service)
+        notes = [note]
 
-        # get_all_notes() omits content for performance — fetch full notes for export
-        if fmt in ("pdf", "json", "markdown", "text"):
-            notes = [self.note_controller.get_note(n.id) for n in notes]
-            notes = [n for n in notes if n]  # drop any None
+        path = ""
+        ok = False
+        safe_title = "".join(c if c.isalnum() or c in " -_" else "_" for c in (note.title or "note")).strip()
 
         if fmt == "json":
             path, _ = QFileDialog.getSaveFileName(
-                self, "Export as JSON", "notes_export.json", "JSON files (*.json)")
+                self, "Export as JSON", f"{safe_title}.json", "JSON files (*.json)")
             if path:
                 ok = mgr.export_notes_to_json(notes, path)
         elif fmt == "markdown":
@@ -1634,22 +1710,26 @@ class MainWindow(QMainWindow):
                 ok = mgr.export_to_markdown(notes, path)
         elif fmt == "text":
             path, _ = QFileDialog.getSaveFileName(
-                self, "Export as Plain Text", "notes_export.txt", "Text files (*.txt)")
+                self, "Export as Plain Text", f"{safe_title}.txt", "Text files (*.txt)")
             if path:
                 ok = mgr.export_to_text(notes, path)
         elif fmt == "pdf":
             path, _ = QFileDialog.getSaveFileName(
-                self, "Export as PDF", "notes_export.pdf", "PDF files (*.pdf)")
+                self, "Export as PDF", f"{safe_title}.pdf", "PDF files (*.pdf)")
             if path:
                 ok = mgr.export_to_pdf(notes, path)
         else:
             return
 
-        if path:
-            if ok:
-                self.statusbar.showMessage(f"Exported {len(notes)} notes", 4000)
-            else:
-                QMessageBox.warning(self, "Export Failed", "Export could not be completed.")
+        if not path:
+            return
+
+        if ok:
+            self.statusbar.showMessage(f"Exported '{note.title}'" , 4000)
+            QMessageBox.information(self, "Export Complete",
+                                    f"'{note.title}' exported successfully.")
+        else:
+            QMessageBox.warning(self, "Export Failed", "Export could not be completed.")
 
     def _open_settings(self):
         """Open the settings dialog."""
@@ -1693,7 +1773,7 @@ class MainWindow(QMainWindow):
         logger.info("Application unlocked")
     
     def closeEvent(self, event):
-        """Handle window close event."""
+        """Save state, clear keys, and quit on X."""
         if self.is_modified and self.current_note:
             self._save_current_note()
         sizes = self.main_splitter.sizes()
@@ -1701,7 +1781,7 @@ class MainWindow(QMainWindow):
             self.config.set("left_panel_width",  sizes[0])
             self.config.set("right_panel_width", sizes[2])
         self.config.save()
-
         self.encryption_service.clear_cached_key()
         logger.info("Application closing")
         event.accept()
+        QApplication.quit()

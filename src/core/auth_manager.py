@@ -123,7 +123,7 @@ class AuthenticationManager:
     def is_first_run(self) -> bool:
         return not self.auth_file.exists()
 
-    def setup_master_password(self, password: str) -> Tuple[bool, str]:
+    def setup_master_password(self, password: str, totp_secret: Optional[str] = None) -> Tuple[bool, str]:
         is_valid, message = self.validate_password_strength(password)
         if not is_valid:
             return False, message
@@ -144,6 +144,8 @@ class AuthenticationManager:
                 "created_at": datetime.now(timezone.utc).isoformat(),
                 "version": "2.0",
             }
+            if totp_secret:
+                auth_data["totp_secret"] = totp_secret
             self._write_auth_file(auth_data)
             self._audit("SETUP", "Master password configured")
             logger.info("Master password configured successfully")
@@ -266,6 +268,68 @@ class AuthenticationManager:
         return int(self.lockout_until - time.time())
 
     # ── Helpers ───────────────────────────────────────────────────────────────
+
+    # ── MFA / TOTP recovery ───────────────────────────────────────────────────
+
+    def get_totp_secret(self) -> Optional[str]:
+        """Return the stored TOTP secret, or None if MFA was not configured."""
+        try:
+            if not self.auth_file.exists():
+                return None
+            data = self._read_auth_file()
+            return data.get("totp_secret")
+        except (OSError, json.JSONDecodeError, AuthenticationError):
+            return None
+
+    def verify_totp(self, code: str) -> bool:
+        """Return True if code matches the stored TOTP secret (±1 window)."""
+        secret = self.get_totp_secret()
+        if not secret:
+            return False
+        try:
+            import pyotp
+            return pyotp.TOTP(secret).verify(code.strip(), valid_window=1)
+        except Exception as e:
+            logger.error("TOTP verify error: %s", e)
+            return False
+
+    def reset_password_with_totp(self, totp_code: str, new_password: str) -> Tuple[bool, str]:
+        """Reset master password after verifying TOTP code."""
+        if not self.verify_totp(totp_code):
+            self._audit("RECOVERY_FAILED", "Invalid TOTP code")
+            return False, "Invalid recovery code."
+
+        is_valid, msg = self.validate_password_strength(new_password)
+        if not is_valid:
+            return False, msg
+
+        try:
+            from src.core.encryption import EncryptionService
+            enc = EncryptionService()
+            key, salt = enc.derive_key(new_password)
+            enc._cached_key = key
+            enc._cached_salt = salt
+            verification_token = enc.encrypt("TMapp-verify-v1")
+
+            # Preserve existing totp_secret
+            secret = self.get_totp_secret()
+            auth_data = {
+                "salt": salt.hex(),
+                "verification_token": verification_token,
+                "failed_attempts": 0,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "version": "2.0",
+            }
+            if secret:
+                auth_data["totp_secret"] = secret
+            self._write_auth_file(auth_data)
+            self.failed_attempts = 0
+            self.lockout_until = None
+            self._audit("RECOVERY_SUCCESS", "Password reset via TOTP")
+            return True, "Password reset successfully."
+        except (OSError, ValueError) as e:
+            logger.error("Password reset failed: %s", e)
+            return False, f"Reset failed: {e}"
 
     def get_stored_salt(self) -> Optional[bytes]:
         try:

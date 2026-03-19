@@ -2,7 +2,6 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
-*.spec
 *.docx
 *.db
 *.log
@@ -11,6 +10,7 @@ venv/
 .venv/
 dist/
 build/
+installer/
 *.egg-info/
 notes_export.*
 IMPROVEMENTS.md

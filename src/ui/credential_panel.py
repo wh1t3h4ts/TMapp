@@ -5,19 +5,16 @@ Shows a lock screen when the vault is locked, a searchable list of
 credentials when unlocked, and inline copy/edit/delete actions.
 """
 import logging
-from typing import Optional
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QListWidget, QListWidgetItem, QMessageBox,
-    QInputDialog, QApplication, QFrame,
+    QApplication, QFrame, QMenu,
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QFont
 
 from src.controllers.credential_controller import CredentialController
-from src.models.credential import Credential
-from src.core.credential_crypto import generate_totp
 
 logger = logging.getLogger(__name__)
 
@@ -30,9 +27,10 @@ class CredentialPanel(QWidget):
     # Emitted when the credential count changes (for status bar)
     count_changed = pyqtSignal(int)
 
-    def __init__(self, controller: CredentialController, parent=None):
+    def __init__(self, controller: CredentialController, standalone: bool = False, parent=None):
         super().__init__(parent)
         self.controller = controller
+        self._standalone = standalone
         self.setObjectName("credentialPanel")
         self._clip_timer = QTimer(self)
         self._clip_timer.setSingleShot(True)
@@ -57,13 +55,6 @@ class CredentialPanel(QWidget):
         lbl.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
         hl.addWidget(lbl)
         hl.addStretch()
-        self.btn_add = QPushButton("+")
-        self.btn_add.setObjectName("iconButton")
-        self.btn_add.setFixedSize(26, 26)
-        self.btn_add.setToolTip("New credential")
-        self.btn_add.clicked.connect(self._new_credential)
-        self.btn_add.setVisible(False)
-        hl.addWidget(self.btn_add)
         layout.addWidget(hdr)
 
         sep = QFrame()
@@ -121,6 +112,12 @@ class CredentialPanel(QWidget):
         self.search_box.setFixedHeight(28)
         self.search_box.textChanged.connect(self._refresh_list)
         sl.addWidget(self.search_box)
+        self.btn_add = QPushButton("➕  New")
+        self.btn_add.setObjectName("credAddBtn")
+        self.btn_add.setFixedHeight(28)
+        self.btn_add.setToolTip("New credential")
+        self.btn_add.clicked.connect(self._new_credential)
+        sl.addWidget(self.btn_add)
         vw.addWidget(sw)
 
         # list
@@ -129,17 +126,33 @@ class CredentialPanel(QWidget):
         self.cred_list.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.cred_list.itemDoubleClicked.connect(self._edit_credential)
+        self.cred_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.cred_list.customContextMenuRequested.connect(self._show_context_menu)
         vw.addWidget(self.cred_list, stretch=1)
 
         # lock button
         btn_lock = QPushButton("🔒  Lock Vault")
         btn_lock.setObjectName("credLockBtn")
-        btn_lock.clicked.connect(self._lock)
+        btn_lock.clicked.connect(self._on_lock_clicked)
         vw.addWidget(btn_lock)
 
         layout.addWidget(self.vault_widget, stretch=1)
 
     # ── Lock / unlock ─────────────────────────────────────────────────────────
+    def _auto_unlock(self, password: str):
+        """Unlock vault silently using the already-verified master password."""
+        self.controller.unlock(password)
+        creds = self.controller.get_all()
+        if creds:
+            try:
+                self.controller.decrypt_username(creds[0])
+            except Exception:
+                self.controller.lock()
+                return
+        self.lock_widget.setVisible(False)
+        self.vault_widget.setVisible(True)
+        self._refresh_list()
+
     def _unlock(self):
         pp = self.passphrase_input.text()
         if not pp:
@@ -160,14 +173,18 @@ class CredentialPanel(QWidget):
         self.passphrase_input.clear()
         self.lock_widget.setVisible(False)
         self.vault_widget.setVisible(True)
-        self.btn_add.setVisible(True)
         self._refresh_list()
+
+    def _on_lock_clicked(self):
+        if self._standalone:
+            QApplication.quit()
+        else:
+            self._lock()
 
     def _lock(self):
         self.controller.lock()
         self.vault_widget.setVisible(False)
         self.lock_widget.setVisible(True)
-        self.btn_add.setVisible(False)
         self.cred_list.clear()
 
     # ── List management ───────────────────────────────────────────────────────
@@ -200,6 +217,30 @@ class CredentialPanel(QWidget):
         from src.ui.credential_dialog import CredentialDialog
         dlg = CredentialDialog(self.controller, credential=cred, parent=self)
         if dlg.exec():
+            self._refresh_list(self.search_box.text())
+
+    def _show_context_menu(self, pos):
+        item = self.cred_list.itemAt(pos)
+        if not item:
+            return
+        menu = QMenu(self)
+        menu.addAction("✏️  Edit", lambda: self._edit_credential(item))
+        menu.addSeparator()
+        menu.addAction("🗑️  Delete", lambda: self._delete_credential(item))
+        menu.exec(self.cred_list.mapToGlobal(pos))
+
+    def _delete_credential(self, item: QListWidgetItem):
+        cred_id = item.data(Qt.ItemDataRole.UserRole)
+        cred = self.controller.get(cred_id)
+        if not cred:
+            return
+        reply = QMessageBox.question(
+            self, "Delete Credential",
+            f"Delete '{cred.service}'? This cannot be undone.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self.controller.delete(cred_id)
             self._refresh_list(self.search_box.text())
 
     def _copy_to_clipboard(self, text: str):

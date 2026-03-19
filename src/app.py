@@ -81,30 +81,49 @@ class TMApp:
     def _show_first_run_wizard(self) -> bool:
         """Show the first-run setup wizard."""
         wizard = FirstRunWizard()
-        
+
+        captured = {"password": "", "mode": "both", "totp_secret": ""}
+
+        def _on_completed(password: str, mode: str, totp_secret: str):
+            captured["password"] = password
+            captured["mode"] = mode
+            captured["totp_secret"] = totp_secret
+
+        wizard.wizard_completed.connect(_on_completed)
+
         if wizard.exec() == wizard.DialogCode.Accepted:
-            password = wizard.field("password")
-            success, message = self.auth_manager.setup_master_password(password)
-            
+            password = captured["password"]
+            mode     = captured["mode"]
+            success, message = self.auth_manager.setup_master_password(
+                password, totp_secret=captured["totp_secret"])
+
             if success:
-                logger.info("Master password configured")
+                self.config.set("app_mode", mode)
+                self.config.save()
+                logger.info(f"Master password configured — mode: {mode}")
+                mode_labels = {
+                    "notes":     "Notes",
+                    "passwords": "Password Manager",
+                    "both":      "Notes + Password Manager",
+                }
                 QMessageBox.information(
                     None, "Setup Complete",
-                    "Your master password has been created successfully!\n\n"
-                    "⚠️ IMPORTANT: Store your password in a safe place. "
-                    "If you forget it, your notes cannot be recovered."
+                    f"TMapp is ready!\n\n"
+                    f"Mode: {mode_labels.get(mode, mode)}\n\n"
+                    "⚠️ IMPORTANT: Store your master password safely.\n"
+                    "Use your authenticator app to reset it if forgotten."
                 )
                 return True
             else:
                 logger.error(f"Failed to setup password: {message}")
                 QMessageBox.critical(None, "Setup Error", f"Failed to setup master password:\n{message}")
                 return False
-        
+
         return False
     
     def _show_authentication_dialog(self) -> bool:
         """Show authentication dialog and wait for success."""
-        auth_dialog = AuthenticationDialog(self.auth_manager)
+        auth_dialog = AuthenticationDialog(self.auth_manager, app_mode=self.config.get("app_mode", "both"))
         
         def on_auth_success(encryption_key: bytes):
             self.is_authenticated = True
@@ -120,20 +139,23 @@ class TMApp:
     
     def _show_main_window(self):
         """Show main application window after authentication."""
-        self.main_window = MainWindow(
-            self.config,
-            self.encryption_service,
-            self.note_controller,
-            self.notebook_controller
-        )
-        self.main_window.show()
-        screen = self.app.primaryScreen().availableGeometry()
-        geo = self.main_window.frameGeometry()
-        self.main_window.move(
-            screen.center().x() - geo.width() // 2,
-            screen.center().y() - geo.height() // 2
-        )
-        logger.info("Main window displayed")
+        mode = self.config.get("app_mode", "both")
+
+        if mode == "passwords":
+            from src.ui.credential_window import CredentialWindow
+            from src.controllers.credential_controller import CredentialController
+            cred_controller = CredentialController(self.database)
+            master_password = self.encryption_service._cached_password
+            self.main_window = CredentialWindow(cred_controller, self.config, master_password=master_password)
+        else:
+            self.main_window = MainWindow(
+                self.config,
+                self.encryption_service,
+                self.note_controller,
+                self.notebook_controller
+            )
+            self.main_window.showMaximized()
+        logger.info(f"Main window displayed — mode: {mode}")
 
 
 def main():

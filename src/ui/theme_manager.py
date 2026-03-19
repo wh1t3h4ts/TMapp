@@ -181,12 +181,10 @@ QToolBar QToolButton {{
     border: none;
     border-radius: 5px;
     padding: 4px 7px;
-    color: {text2};
     min-width: 22px;
 }}
 QToolBar QToolButton:hover {{
     background-color: {hover_bg};
-    color: {text1};
 }}
 QToolBar QToolButton:checked {{
     background-color: {sel_bg};
@@ -196,7 +194,6 @@ QToolBar QToolButton:checked {{
 /* ── Buttons ── */
 QPushButton {{
     background-color: {accent};
-    color: {btn_fg};
     border: none;
     border-radius: 6px;
     padding: 6px 16px;
@@ -212,6 +209,23 @@ QPushButton:pressed {{
 QPushButton:disabled {{
     background-color: {dis};
     color: {dis_t};
+}}
+/* Only named/text buttons get the dark fg color */
+QPushButton#topBarAction,
+QPushButton#credUnlockBtn,
+QPushButton#credAddBtn,
+QPushButton#pmNavBtn,
+QPushButton#pmLockBtn,
+QPushButton#unlock_btn,
+QPushButton#secondaryButton,
+QPushButton#dangerButton,
+QPushButton#sidebarButton,
+QPushButton#addButton,
+QPushButton#sectionHeader,
+QPushButton#credGenBtn,
+QPushButton#credLockBtn,
+QPushButton#aiAskBtn {{
+    color: {btn_fg};
 }}
 QPushButton#secondaryButton {{
     background-color: transparent;
@@ -945,6 +959,17 @@ QPushButton#credUnlockBtn {{
     font-weight: 600;
 }}
 QPushButton#credUnlockBtn:hover {{ background-color: {acc_h}; }}
+QPushButton#credAddBtn {{
+    background-color: {accent};
+    color: {btn_fg};
+    border: none;
+    border-radius: 5px;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 0 8px;
+}}
+QPushButton#credAddBtn:hover {{ background-color: {acc_h}; }}
+QPushButton#credAddBtn:pressed {{ background-color: {acc_a}; }}
 QPushButton#credLockBtn {{
     background-color: transparent;
     border: 1px solid {brd_l};
@@ -957,15 +982,8 @@ QPushButton#credLockBtn {{
 QPushButton#credLockBtn:hover {{ border-color: {accent}; color: {accent}; }}
 QPushButton#credIconBtn {{
     background-color: transparent;
-    border: 1px solid {brd_l};
-    border-radius: 5px;
-    color: {text2};
-    font-size: 13px;
-}}
-QPushButton#credIconBtn:hover {{
-    background-color: {hover_bg};
-    border-color: {accent};
-    color: {accent};
+    border: none;
+    font-size: 16px;
 }}
 QPushButton#credGenBtn {{
     background-color: {cred_gen_bg};
@@ -984,6 +1002,3 @@ QWidget#totpWidget {{
     padding: 4px 8px;
 }}
 """
-
-    def get_color(self, key: str) -> str:
-        return self.colors.get(key, '#ffffff')

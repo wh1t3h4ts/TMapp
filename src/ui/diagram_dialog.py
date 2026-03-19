@@ -16,7 +16,7 @@ class DiagramDialog(QDialog):
 
     def __init__(self, existing_data: str = "", parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Starlex — Diagram Editor")
+        self.setWindowTitle("TMapp — Diagram Editor")
         self.setMinimumSize(1100, 700)
         self.resize(1200, 750)
         self._png_b64: str = ""

@@ -1,111 +1,66 @@
 """Authentication dialog for password entry."""
 import logging
-<<<<<<< HEAD
 import os
-from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
+from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
                               QLineEdit, QPushButton, QFrame, QApplication)
 from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation, QPoint, pyqtSignal
 from PyQt6.QtGui import QFont, QPixmap, QIcon
-=======
-from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
-                              QLineEdit, QPushButton, QFrame, QApplication)
-from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation, QPoint, pyqtSignal
-from PyQt6.QtGui import QFont
->>>>>>> 07f8357c75001a99bd7ebbb69168f8bb8f818e2d
 
 from src.core.auth_manager import AuthenticationManager, AccountLockedError, AuthenticationError
 
 logger = logging.getLogger(__name__)
 
-<<<<<<< HEAD
-import sys as _sys
+_LOGO_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'logo.png')
 
-def _resource_path(relative: str) -> str:
-    base = getattr(_sys, '_MEIPASS', os.path.dirname(os.path.dirname(__file__)))
-    return os.path.join(base, relative)
-
-_LOGO_PATH = _resource_path('src/logo.png')
-
-=======
->>>>>>> 07f8357c75001a99bd7ebbb69168f8bb8f818e2d
 
 class AuthenticationDialog(QDialog):
     """
     Modal dialog for password authentication.
-    This is shown on every app launch - user MUST authenticate to proceed.
+    Shown on every app launch — user MUST authenticate to proceed.
     """
     
-    authentication_successful = pyqtSignal(bytes)  # Emits encryption key
+    authentication_successful = pyqtSignal(bytes)
     
     def __init__(self, auth_manager: AuthenticationManager, parent=None):
         super().__init__(parent)
         
         self.auth_manager = auth_manager
         self.encryption_key = None
-<<<<<<< HEAD
-        self.entered_password = None  # Store password for migration
-=======
->>>>>>> 07f8357c75001a99bd7ebbb69168f8bb8f818e2d
+        self.entered_password = None
         
         self._setup_ui()
         self._apply_theme()
         
-        # Make dialog modal and prevent closing
         self.setModal(True)
         self.setWindowFlags(
-            Qt.WindowType.Dialog | 
-            Qt.WindowType.CustomizeWindowHint | 
+            Qt.WindowType.Dialog |
+            Qt.WindowType.CustomizeWindowHint |
             Qt.WindowType.WindowTitleHint
         )
-        
-        # Disable close button
         self.setWindowFlag(Qt.WindowType.WindowCloseButtonHint, False)
         
         logger.info("Authentication dialog initialized")
     
     def _setup_ui(self):
         """Create authentication dialog UI."""
-<<<<<<< HEAD
-        self.setWindowTitle("Starlex - Authentication")
+        self.setWindowTitle("TMapp - Authentication")
         self.setMinimumSize(500, 600)
         self.setMaximumSize(500, 600)
         if os.path.exists(_LOGO_PATH):
             self.setWindowIcon(QIcon(_LOGO_PATH))
-=======
-        self.setWindowTitle("TMapp - Authentication")
-        self.setMinimumSize(500, 600)
-        self.setMaximumSize(500, 600)
->>>>>>> 07f8357c75001a99bd7ebbb69168f8bb8f818e2d
         
         layout = QVBoxLayout()
         layout.setSpacing(16)
         layout.setContentsMargins(40, 40, 40, 40)
         
-<<<<<<< HEAD
-        # Logo image — replaces the Starlex text title
+        # Logo
         logo_label = QLabel()
         logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         pix = QPixmap(_LOGO_PATH) if os.path.exists(_LOGO_PATH) else QPixmap()
         if not pix.isNull():
-            logo_label.setPixmap(pix.scaled(160, 160, Qt.AspectRatioMode.KeepAspectRatio,
+            logo_label.setPixmap(pix.scaled(320, 100, Qt.AspectRatioMode.KeepAspectRatio,
                                             Qt.TransformationMode.SmoothTransformation))
             logo_label.setStyleSheet("margin: 8px 0 16px 0;")
-        else:
-            logo_label.setText("Starlex")
-            logo_label.setFont(QFont("Segoe UI", 32, QFont.Weight.Bold))
-            logo_label.setStyleSheet("margin: 8px 0 16px 0;")
-=======
-        # Logo/Icon
-        logo_label = QLabel("🔒")
-        logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        logo_label.setStyleSheet("font-size: 72px; margin: 16px;")
-        
-        # Title
-        title = QLabel("TMapp")
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title.setFont(QFont("Segoe UI", 32, QFont.Weight.Bold))
-        title.setStyleSheet("margin: 8px;")
->>>>>>> 07f8357c75001a99bd7ebbb69168f8bb8f818e2d
         
         subtitle = QLabel("Secure Notes")
         subtitle.setObjectName("subtitle")
@@ -113,12 +68,10 @@ class AuthenticationDialog(QDialog):
         subtitle.setFont(QFont("Segoe UI", 16))
         subtitle.setStyleSheet("margin-bottom: 32px;")
         
-        # Password label
         password_label = QLabel("Enter Your Master Password:")
         password_label.setFont(QFont("Segoe UI", 12))
         password_label.setStyleSheet("margin-top: 16px;")
         
-        # Password input with toggle
         password_container = QHBoxLayout()
         password_container.setSpacing(8)
         
@@ -133,12 +86,12 @@ class AuthenticationDialog(QDialog):
         self.toggle_visibility_btn.setObjectName("toggle_visibility_btn")
         self.toggle_visibility_btn.setFixedSize(48, 48)
         self.toggle_visibility_btn.setToolTip("Show/hide password")
+        self.toggle_visibility_btn.setAutoDefault(False)
         self.toggle_visibility_btn.clicked.connect(self.toggle_password_visibility)
         
         password_container.addWidget(self.password_input)
         password_container.addWidget(self.toggle_visibility_btn)
         
-        # Error message
         self.error_label = QLabel("")
         self.error_label.setObjectName("error_label")
         self.error_label.setWordWrap(True)
@@ -146,34 +99,29 @@ class AuthenticationDialog(QDialog):
         self.error_label.setVisible(False)
         self.error_label.setMinimumHeight(60)
         
-        # Unlock button
         self.unlock_btn = QPushButton("Unlock")
         self.unlock_btn.setObjectName("unlock_btn")
         self.unlock_btn.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
         self.unlock_btn.setMinimumHeight(48)
+        self.unlock_btn.setDefault(False)
+        self.unlock_btn.setAutoDefault(False)
         self.unlock_btn.clicked.connect(self.attempt_login)
-        self.unlock_btn.setDefault(True)
         
-        # Bottom actions
         bottom_layout = QHBoxLayout()
         bottom_layout.setSpacing(16)
         
         self.exit_btn = QPushButton("Exit")
         self.exit_btn.setObjectName("exit_btn")
         self.exit_btn.setFont(QFont("Segoe UI", 11))
+        self.exit_btn.setAutoDefault(False)
         self.exit_btn.clicked.connect(self.exit_application)
         
         bottom_layout.addStretch()
         bottom_layout.addWidget(self.exit_btn)
         bottom_layout.addStretch()
         
-        # Add all to main layout
         layout.addStretch()
         layout.addWidget(logo_label)
-<<<<<<< HEAD
-=======
-        layout.addWidget(title)
->>>>>>> 07f8357c75001a99bd7ebbb69168f8bb8f818e2d
         layout.addWidget(subtitle)
         layout.addWidget(password_label)
         layout.addLayout(password_container)
@@ -185,8 +133,6 @@ class AuthenticationDialog(QDialog):
         layout.addStretch()
         
         self.setLayout(layout)
-        
-        # Focus password input
         QTimer.singleShot(100, self.password_input.setFocus)
     
     def attempt_login(self):
@@ -194,64 +140,46 @@ class AuthenticationDialog(QDialog):
         password = self.password_input.text()
         
         if not password:
-            self.show_error("Please enter your password")
+            remaining = self.auth_manager.MAX_ATTEMPTS - self.auth_manager.failed_attempts
+            self.show_error(f"Please enter your password. {remaining} attempt(s) remaining.")
             return
         
+        self.set_ui_enabled(False)
+        self.unlock_btn.setText("Verifying...")
+        self.error_label.setVisible(False)
+        QApplication.processEvents()
+        
         try:
-            # Disable UI during verification
-            self.set_ui_enabled(False)
-            self.unlock_btn.setText("Verifying...")
-            self.error_label.setVisible(False)
-            
-            # Process events to update UI
-            QApplication.processEvents()
-            
-            # Verify password (may take 1-3 seconds due to Argon2id)
             success, key = self.auth_manager.verify_master_password(password)
-            
             if success:
-<<<<<<< HEAD
-                # Success - store key and password, then close dialog
                 self.encryption_key = key
-                self.entered_password = password  # Store for migration
-=======
-                # Success - store key and close dialog
-                self.encryption_key = key
->>>>>>> 07f8357c75001a99bd7ebbb69168f8bb8f818e2d
+                self.entered_password = password
                 self.authentication_successful.emit(key)
                 logger.info("Authentication successful")
                 self.accept()
         
         except AccountLockedError as e:
+            self.unlock_btn.setText("Unlock")
             self.show_error(str(e))
-            self.set_ui_enabled(False)  # Keep disabled during lockout
-            
-            # Start timer to re-enable after lockout
-            remaining = self.auth_manager.get_lockout_remaining()
-            QTimer.singleShot(remaining * 1000, lambda: self.set_ui_enabled(True))
+            # keep UI disabled — account is locked
         
         except AuthenticationError as e:
+            self.unlock_btn.setText("Unlock")
             self.show_error(str(e))
             self.password_input.clear()
-            self.password_input.setFocus()
             self.set_ui_enabled(True)
+            self.password_input.setFocus()
         
         except Exception as e:
+            self.unlock_btn.setText("Unlock")
             self.show_error("Authentication failed. Please try again.")
             logger.error(f"Authentication error: {e}", exc_info=True)
             self.set_ui_enabled(True)
-        
-        finally:
-            if self.unlock_btn.text() == "Verifying...":
-                self.unlock_btn.setText("Unlock")
-                self.set_ui_enabled(True)
     
     def show_error(self, message: str):
         """Display error message with animation."""
         self.error_label.setText(message)
         self.error_label.setVisible(True)
-        
-        # Shake animation
         self.animate_shake()
     
     def animate_shake(self):
@@ -259,13 +187,11 @@ class AuthenticationDialog(QDialog):
         animation = QPropertyAnimation(self, b"pos")
         animation.setDuration(50)
         animation.setLoopCount(3)
-        
         current_pos = self.pos()
         animation.setKeyValueAt(0, current_pos)
         animation.setKeyValueAt(0.25, current_pos + QPoint(10, 0))
         animation.setKeyValueAt(0.75, current_pos - QPoint(10, 0))
         animation.setKeyValueAt(1, current_pos)
-        
         animation.start()
     
     def toggle_password_visibility(self):
@@ -275,13 +201,10 @@ class AuthenticationDialog(QDialog):
         else:
             self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
     
-<<<<<<< HEAD
     def get_entered_password(self) -> str:
-        """Get the entered password for migration purposes."""
+        """Get the entered password."""
         return self.entered_password
     
-=======
->>>>>>> 07f8357c75001a99bd7ebbb69168f8bb8f818e2d
     def set_ui_enabled(self, enabled: bool):
         """Enable/disable UI elements."""
         self.password_input.setEnabled(enabled)
@@ -296,14 +219,21 @@ class AuthenticationDialog(QDialog):
     
     def closeEvent(self, event):
         """Prevent closing dialog without authentication."""
-        event.ignore()  # User must authenticate or exit explicitly
+        event.ignore()
+
+    def keyPressEvent(self, event):
+        """Block Escape and Enter from closing the dialog."""
+        if event.key() in (Qt.Key.Key_Escape, Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                self.attempt_login()
+            return
+        super().keyPressEvent(event)
     
     def _apply_theme(self):
-<<<<<<< HEAD
-        """Apply cyberpunk dark theme to authentication dialog."""
+        """Apply dark theme to authentication dialog."""
         self.setStyleSheet("""
         QDialog {
-            background-color: #05070f;
+            background-color: #080f0a;
         }
 
         QWidget {
@@ -312,178 +242,91 @@ class AuthenticationDialog(QDialog):
         }
 
         QLabel {
-            color: #e2e8f0;
+            color: #f0f7ee;
             background: transparent;
         }
 
         QLabel#subtitle {
-            color: #64748b;
-            letter-spacing: 0.5px;
+            color: #8faa88;
         }
 
         QLineEdit {
-            background-color: #0d1117;
-            color: #e2e8f0;
-            border: 1px solid #2d3f55;
+            background-color: #0d1610;
+            color: #f0f7ee;
+            border: 1px solid #1e2e1a;
             border-radius: 8px;
             padding: 12px 16px;
             font-size: 14px;
-            selection-background-color: #00d4ff;
-            selection-color: #05070f;
+            selection-background-color: #f45e29;
+            selection-color: #080f0a;
         }
 
         QLineEdit:focus {
-            border-color: #00d4ff;
-            background-color: #111827;
+            border-color: #f45e29;
+            background-color: #111d13;
         }
 
         QLineEdit:hover {
-            border-color: #3d5a7a;
+            border-color: #2a3d24;
         }
 
         QPushButton#unlock_btn {
-            background-color: #00d4ff;
-            color: #05070f;
+            background-color: #f45e29;
+            color: #0f1a14;
             border: none;
             border-radius: 8px;
             padding: 12px 32px;
             font-weight: 700;
             font-size: 14px;
-            letter-spacing: 0.5px;
         }
 
         QPushButton#unlock_btn:hover {
-            background-color: #33ddff;
+            background-color: #fd742e;
         }
 
         QPushButton#unlock_btn:pressed {
-            background-color: #0099cc;
+            background-color: #d94e1f;
         }
 
         QPushButton#unlock_btn:disabled {
-            background-color: #1e293b;
-            color: #475569;
+            background-color: #0d1610;
+            color: #4a6044;
         }
 
         QPushButton#toggle_visibility_btn {
-            background-color: #0d1117;
-            border: 1px solid #2d3f55;
+            background-color: #0d1610;
+            border: 1px solid #1e2e1a;
             border-radius: 8px;
             font-size: 18px;
-            color: #64748b;
+            color: #8faa88;
         }
 
         QPushButton#toggle_visibility_btn:hover {
-            background-color: #111827;
-            border-color: #00d4ff;
-            color: #00d4ff;
+            background-color: #1c2a18;
+            border-color: #f45e29;
+            color: #f45e29;
         }
 
         QPushButton#exit_btn {
             background-color: transparent;
-            color: #64748b;
-            border: 1px solid #1e293b;
+            color: #8faa88;
+            border: 1px solid #2a3d24;
             border-radius: 7px;
             padding: 8px 24px;
             font-size: 12px;
         }
 
         QPushButton#exit_btn:hover {
-            color: #e2e8f0;
-            border-color: #2d3f55;
+            color: #f0f7ee;
+            border-color: #3a5232;
         }
 
         QLabel#error_label {
-            color: #fca5a5;
-            background-color: rgba(255, 45, 85, 0.10);
-            border: 1px solid rgba(255, 45, 85, 0.40);
+            color: #ffb3a0;
+            background-color: rgba(248, 81, 73, 0.10);
+            border: 1px solid rgba(248, 81, 73, 0.40);
             border-radius: 7px;
             padding: 10px 14px;
             font-size: 12px;
         }
         """)
-=======
-        """Apply dark theme to authentication dialog."""
-        stylesheet = """
-        QDialog {
-            background-color: #0D1117;
-        }
-        
-        QLabel {
-            color: #F0F6FC;
-        }
-        
-        QLabel#subtitle {
-            color: #8B949E;
-        }
-        
-        QLineEdit {
-            background-color: #161B22;
-            color: #F0F6FC;
-            border: 2px solid #30363D;
-            border-radius: 8px;
-            padding: 12px 16px;
-            font-size: 14px;
-        }
-        
-        QLineEdit:focus {
-            border-color: #2563EB;
-        }
-        
-        QPushButton#unlock_btn {
-            background-color: #2563EB;
-            color: #FFFFFF;
-            border: none;
-            border-radius: 8px;
-            padding: 12px 32px;
-        }
-        
-        QPushButton#unlock_btn:hover {
-            background-color: #3973f7;
-        }
-        
-        QPushButton#unlock_btn:pressed {
-            background-color: #1746a2;
-        }
-        
-        QPushButton#unlock_btn:disabled {
-            background-color: #2D333B;
-            color: #6E7681;
-        }
-        
-        QPushButton#toggle_visibility_btn {
-            background-color: #161B22;
-            border: 2px solid #30363D;
-            border-radius: 8px;
-            font-size: 20px;
-        }
-        
-        QPushButton#toggle_visibility_btn:hover {
-            background-color: #21262D;
-            border-color: #2563EB;
-        }
-        
-        QPushButton#exit_btn {
-            background-color: transparent;
-            color: #8B949E;
-            border: 1px solid #30363D;
-            border-radius: 6px;
-            padding: 8px 24px;
-        }
-        
-        QPushButton#exit_btn:hover {
-            color: #F0F6FC;
-            border-color: #2563EB;
-        }
-        
-        QLabel#error_label {
-            color: #FFFFFF;
-            background-color: rgba(220, 38, 38, 0.15);
-            border: 1px solid #DC2626;
-            border-radius: 6px;
-            padding: 12px;
-        }
-        """
-        
-        self.setStyleSheet(stylesheet)
->>>>>>> 07f8357c75001a99bd7ebbb69168f8bb8f818e2d

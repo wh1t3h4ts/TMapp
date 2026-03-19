@@ -32,7 +32,6 @@ class AppConfig:
             "editor_font_size": 11,
             "spell_check": True,
             "default_notebook": "default",
-            "password_salt": None,
         }
         
         self.config: Dict[str, Any] = {}

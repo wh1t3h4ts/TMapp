@@ -1,3 +1,4 @@
+import re
 import logging
 from typing import List, Optional
 from datetime import datetime
@@ -79,7 +80,7 @@ class NoteController:
         """
         try:
             result = self.db.query_one("""
-                SELECT * FROM notes WHERE id = ? AND is_trashed = 0
+                SELECT * FROM notes WHERE id = ?
             """, (note_id,))
             
             if not result:
@@ -221,12 +222,16 @@ class NoteController:
             notes = []
             
             for row in results:
-                note_dict = dict(row)
-                # Decrypt only title for list view (performance)
-                note_dict['title'] = self.encryption.decrypt(note_dict['title'])
-                # Don't decrypt content for preview
-                note_dict['content'] = ""
-                notes.append(Note.from_dict(note_dict))
+                try:
+                    note_dict = dict(row)
+                    # Decrypt only title for list view (performance)
+                    note_dict['title'] = self.encryption.decrypt(note_dict['title'])
+                    # Don't decrypt content for preview
+                    note_dict['content'] = ""
+                    notes.append(Note.from_dict(note_dict))
+                except Exception as row_err:
+                    logger.warning(f"Skipping unreadable note row: {row_err}")
+                    continue
             
             logger.info(f"Retrieved {len(notes)} notes")
             return notes
@@ -304,70 +309,53 @@ class NoteController:
     def toggle_favorite(self, note_id: str) -> bool:
         """Toggle favorite status of a note."""
         try:
-            note = self.get_note(note_id)
-            if note:
-                note.is_favorite = not note.is_favorite
-                return self.update_note(note)
-            return False
-        
+            self.db.execute("""
+                UPDATE notes SET is_favorite = NOT is_favorite, modified_at = ? WHERE id = ?
+            """, (datetime.now().isoformat(), note_id))
+            return True
         except Exception as e:
             logger.error(f"Failed to toggle favorite for {note_id}: {e}")
             return False
-    
+
     def toggle_pin(self, note_id: str) -> bool:
         """Toggle pin status of a note."""
         try:
-            note = self.get_note(note_id)
-            if note:
-                note.is_pinned = not note.is_pinned
-                return self.update_note(note)
-            return False
-        
+            self.db.execute("""
+                UPDATE notes SET is_pinned = NOT is_pinned, modified_at = ? WHERE id = ?
+            """, (datetime.now().isoformat(), note_id))
+            return True
         except Exception as e:
             logger.error(f"Failed to toggle pin for {note_id}: {e}")
             return False
-    
+
     def toggle_archive(self, note_id: str) -> bool:
         """Toggle archive status of a note."""
         try:
-            note = self.get_note(note_id)
-            if note:
-                note.is_archived = not note.is_archived
-                return self.update_note(note)
-            return False
-        
+            self.db.execute("""
+                UPDATE notes SET is_archived = NOT is_archived, modified_at = ? WHERE id = ?
+            """, (datetime.now().isoformat(), note_id))
+            return True
         except Exception as e:
             logger.error(f"Failed to toggle archive for {note_id}: {e}")
             return False
     
     def search_notes(self, query: str) -> List[Note]:
-        """
-        Search notes by title and content.
-        
-        Args:
-            query: Search query
-            
-        Returns:
-            List of matching notes
-        """
+        """Search notes by title and content in a single pass."""
         try:
-            all_notes = self.get_all_notes()
-            matching_notes = []
-            
+            rows = self.db.query_all("""
+                SELECT * FROM notes WHERE is_trashed = 0 ORDER BY is_pinned DESC, modified_at DESC
+            """)
             query_lower = query.lower()
-            
-            for note in all_notes:
-                # Get full note with content
-                full_note = self.get_note(note.id)
-                if full_note:
-                    # Search in title and content
-                    if (query_lower in full_note.title.lower() or 
-                        query_lower in full_note.content.lower()):
-                        matching_notes.append(full_note)
-            
-            logger.info(f"Search '{query}' found {len(matching_notes)} results")
-            return matching_notes
-        
+            matches = []
+            for row in rows:
+                note_dict = dict(row)
+                note_dict['title'] = self.encryption.decrypt(note_dict['title'])
+                note_dict['content'] = self.encryption.decrypt(note_dict['content'])
+                plain_content = re.sub(r'<[^>]+>', '', note_dict['content'])
+                if query_lower in note_dict['title'].lower() or query_lower in plain_content.lower():
+                    matches.append(Note.from_dict(note_dict))
+            logger.info(f"Search '{query}' found {len(matches)} results")
+            return matches
         except Exception as e:
             logger.error(f"Search failed: {e}")
             return []

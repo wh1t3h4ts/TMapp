@@ -73,18 +73,22 @@ class Note:
     
     def update_metadata(self, content: str):
         """Update metadata based on content."""
-        self.word_count = len(content.split())
-        self.character_count = len(content)
-        self.reading_time = max(1, self.word_count // 200)  # Average reading speed
+        plain = re.sub(r'<[^>]+>', '', content)
+        self.word_count = len(plain.split())
+        self.character_count = len(plain)
+        self.reading_time = max(1, self.word_count // 200)
         self.modified_at = datetime.now()
-        
-        # Detect tasks
+
         task_pattern = r'\[ \]|\[x\]|\[X\]'
         tasks = re.findall(task_pattern, content)
         self.total_tasks = len(tasks)
         self.completed_tasks = len([t for t in tasks if t.lower() == '[x]'])
         self.has_tasks = self.total_tasks > 0
     
+    def get_plain_text(self) -> str:
+        """Get plain text content with HTML tags stripped."""
+        return re.sub(r'<[^>]+>', '', self.content).strip()
+
     def to_dict(self) -> dict:
         """Convert to dictionary for storage."""
         return {

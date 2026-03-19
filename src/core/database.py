@@ -24,7 +24,7 @@ class Database:
         try:
             self.connection = sqlite3.connect(str(self.db_path), check_same_thread=False)
             self.connection.row_factory = sqlite3.Row
-            # Enable foreign keys
+            self.connection.execute("PRAGMA journal_mode = WAL")
             self.connection.execute("PRAGMA foreign_keys = ON")
             logger.debug("Database connection established")
         except Exception as e:
@@ -36,12 +36,8 @@ class Database:
         cursor = self.connection.cursor()
         
         try:
-            # Check if schema needs migration
-            needs_migration = self._check_schema_migration()
-            
-            if needs_migration:
-                logger.info("Schema migration needed, recreating tables...")
-                self._drop_old_schema()
+            # Migrate schema non-destructively before creating tables
+            self._migrate_schema()
             
             # Notes table with all fields
             cursor.execute("""
@@ -144,60 +140,46 @@ class Database:
             self.connection.rollback()
             raise
     
-    def _check_schema_migration(self) -> bool:
-        """Check if schema needs migration."""
-        try:
-            # Check if notes table exists and has the correct columns
-            result = self.query_one("""
-                SELECT name FROM sqlite_master 
-                WHERE type='table' AND name='notes'
-            """)
-            
-            if result:
-                # Check if modified_at column exists
-                cursor = self.connection.cursor()
-                cursor.execute("PRAGMA table_info(notes)")
-                columns = [row[1] for row in cursor.fetchall()]
-                
-                # If modified_at doesn't exist, we need migration
-                if 'modified_at' not in columns:
-                    return True
-            
-            return False
-            
-        except Exception as e:
-            logger.error(f"Schema check failed: {e}")
-            return False
-    
-    def _drop_old_schema(self):
-        """Drop old schema tables."""
+    def _migrate_schema(self):
+        """Add missing columns to existing tables without dropping data."""
         try:
             cursor = self.connection.cursor()
-            
-            # Disable foreign keys temporarily
-            cursor.execute("PRAGMA foreign_keys = OFF")
-            
-            # Drop old tables
-            cursor.execute("DROP TABLE IF EXISTS notes")
-            cursor.execute("DROP TABLE IF EXISTS notebooks")
-            cursor.execute("DROP TABLE IF EXISTS tags")
-            cursor.execute("DROP TABLE IF EXISTS attachments")
-            
-            # Drop old indexes
-            cursor.execute("DROP INDEX IF EXISTS idx_notes_notebook")
-            cursor.execute("DROP INDEX IF EXISTS idx_notes_modified")
-            cursor.execute("DROP INDEX IF EXISTS idx_notes_favorite")
-            cursor.execute("DROP INDEX IF EXISTS idx_notes_trashed")
-            
+            result = cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='notes'"
+            ).fetchone()
+            if not result:
+                return  # table doesn't exist yet, nothing to migrate
+
+            cursor.execute("PRAGMA table_info(notes)")
+            existing = {row[1] for row in cursor.fetchall()}
+
+            migrations = {
+                "modified_at":        "ALTER TABLE notes ADD COLUMN modified_at TEXT NOT NULL DEFAULT ''",
+                "is_archived":        "ALTER TABLE notes ADD COLUMN is_archived INTEGER DEFAULT 0",
+                "is_trashed":         "ALTER TABLE notes ADD COLUMN is_trashed INTEGER DEFAULT 0",
+                "is_favorite":        "ALTER TABLE notes ADD COLUMN is_favorite INTEGER DEFAULT 0",
+                "is_pinned":          "ALTER TABLE notes ADD COLUMN is_pinned INTEGER DEFAULT 0",
+                "color":              "ALTER TABLE notes ADD COLUMN color TEXT",
+                "attachments":        "ALTER TABLE notes ADD COLUMN attachments TEXT DEFAULT ''",
+                "images":             "ALTER TABLE notes ADD COLUMN images TEXT DEFAULT ''",
+                "links":              "ALTER TABLE notes ADD COLUMN links TEXT DEFAULT ''",
+                "has_tasks":          "ALTER TABLE notes ADD COLUMN has_tasks INTEGER DEFAULT 0",
+                "completed_tasks":    "ALTER TABLE notes ADD COLUMN completed_tasks INTEGER DEFAULT 0",
+                "total_tasks":        "ALTER TABLE notes ADD COLUMN total_tasks INTEGER DEFAULT 0",
+                "word_count":         "ALTER TABLE notes ADD COLUMN word_count INTEGER DEFAULT 0",
+                "character_count":    "ALTER TABLE notes ADD COLUMN character_count INTEGER DEFAULT 0",
+                "reading_time":       "ALTER TABLE notes ADD COLUMN reading_time INTEGER DEFAULT 0",
+                "encrypted":          "ALTER TABLE notes ADD COLUMN encrypted INTEGER DEFAULT 1",
+                "encryption_version": "ALTER TABLE notes ADD COLUMN encryption_version TEXT DEFAULT '1.0'",
+            }
+            for col, sql in migrations.items():
+                if col not in existing:
+                    cursor.execute(sql)
+                    logger.info(f"Migrated: added column '{col}' to notes")
+
             self.connection.commit()
-            
-            # Re-enable foreign keys
-            cursor.execute("PRAGMA foreign_keys = ON")
-            
-            logger.info("Old schema dropped successfully")
-            
         except Exception as e:
-            logger.error(f"Failed to drop old schema: {e}")
+            logger.error(f"Schema migration failed: {e}")
             self.connection.rollback()
             raise
     

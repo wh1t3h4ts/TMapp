@@ -1,4 +1,5 @@
 """Encryption service using AES-256-GCM and Argon2id."""
+import base64
 import secrets
 import logging
 from typing import Optional, Tuple
@@ -12,15 +13,14 @@ logger = logging.getLogger(__name__)
 class EncryptionService:
     """Secure encryption service using AES-256-GCM with Argon2id key derivation."""
     
-    KEY_SIZE = 32  # 256 bits for AES-256
-    SALT_SIZE = 16  # 128 bits
-    NONCE_SIZE = 12  # 96 bits (recommended for GCM)
-    TAG_SIZE = 16  # 128 bits authentication tag
+    KEY_SIZE = 32
+    SALT_SIZE = 16
+    NONCE_SIZE = 12
+    TAG_SIZE = 16
     
-    # Argon2id parameters
-    ARGON2_TIME_COST = 2
-    ARGON2_MEMORY_COST = 65536  # 64 MB
-    ARGON2_LANES = 4  # parallelism
+    ARGON2_TIME_COST = 3
+    ARGON2_MEMORY_COST = 102400  # 100 MB
+    ARGON2_LANES = 4
     
     def __init__(self):
         """Initialize encryption service."""
@@ -39,9 +39,6 @@ class EncryptionService:
             raise ValueError(f"Salt must be {self.SALT_SIZE} bytes")
         
         try:
-            password_bytes = password.encode('utf-8')
-            
-            # Create KDF with all required parameters
             kdf = Argon2id(
                 salt=salt,
                 length=self.KEY_SIZE,
@@ -49,8 +46,7 @@ class EncryptionService:
                 lanes=self.ARGON2_LANES,
                 memory_cost=self.ARGON2_MEMORY_COST
             )
-            
-            key = kdf.derive(password_bytes)
+            key = kdf.derive(password.encode('utf-8'))
             logger.info("Key derived successfully")
             return key, salt
         
@@ -82,8 +78,8 @@ class EncryptionService:
         except Exception as e:
             logger.error(f"Error clearing key: {str(e)}")
     
-    def encrypt(self, plaintext: str, password: Optional[str] = None) -> bytes:
-        """Encrypt plaintext using AES-256-GCM."""
+    def encrypt(self, plaintext: str, password: Optional[str] = None) -> str:
+        """Encrypt plaintext using AES-256-GCM. Returns base64-encoded string."""
         if not plaintext:
             raise ValueError("Plaintext cannot be empty")
         
@@ -99,9 +95,9 @@ class EncryptionService:
             nonce = secrets.token_bytes(self.NONCE_SIZE)
             aesgcm = AESGCM(key)
             ciphertext = aesgcm.encrypt(nonce, plaintext.encode('utf-8'), None)
-            encrypted_data = salt + nonce + ciphertext
+            encrypted_bytes = salt + nonce + ciphertext
             logger.info(f"Data encrypted ({len(plaintext)} bytes)")
-            return encrypted_data
+            return base64.b64encode(encrypted_bytes).decode('ascii')
         
         except Exception as e:
             logger.error(f"Encryption failed: {str(e)}")
@@ -111,30 +107,45 @@ class EncryptionService:
             if password and 'key' in locals():
                 key = b'\x00' * len(key)
     
-    def decrypt(self, encrypted_data: bytes, password: Optional[str] = None) -> str:
-        """Decrypt data encrypted with AES-256-GCM."""
+    def decrypt(self, encrypted_data, password: Optional[str] = None) -> str:
+        """Decrypt base64-encoded or raw bytes data encrypted with AES-256-GCM."""
         if not encrypted_data:
             raise ValueError("Encrypted data cannot be empty")
+
+        # Normalise: accept both base64 str and legacy raw bytes
+        if isinstance(encrypted_data, str):
+            try:
+                raw = base64.b64decode(encrypted_data)
+            except Exception:
+                # Legacy: SQLite stored raw bytes as a latin-1 string
+                try:
+                    raw = encrypted_data.encode('latin-1')
+                except Exception:
+                    raise ValueError("Invalid encrypted data: cannot decode")
+        else:
+            raw = bytes(encrypted_data)
         
         min_length = self.SALT_SIZE + self.NONCE_SIZE + self.TAG_SIZE
-        if len(encrypted_data) < min_length:
-            raise ValueError(f"Invalid encrypted data: too short")
+        if len(raw) < min_length:
+            raise ValueError("Invalid encrypted data: too short")
         
         try:
-            salt = encrypted_data[:self.SALT_SIZE]
-            nonce = encrypted_data[self.SALT_SIZE:self.SALT_SIZE + self.NONCE_SIZE]
-            ciphertext = encrypted_data[self.SALT_SIZE + self.NONCE_SIZE:]
+            salt = raw[:self.SALT_SIZE]
+            nonce = raw[self.SALT_SIZE:self.SALT_SIZE + self.NONCE_SIZE]
+            ciphertext = raw[self.SALT_SIZE + self.NONCE_SIZE:]
             
             if password:
                 key, _ = self.derive_key(password, salt)
-            elif self._cached_key and self._cached_salt == salt:
+            elif self._cached_key and self._cached_salt:
+                if salt != self._cached_salt:
+                    raise ValueError("Salt mismatch — data was not encrypted with the current key")
                 key = self._cached_key
             else:
-                raise ValueError("No password or matching cached key")
+                logger.error("No password available for decryption")
+                raise ValueError("No password or cached key available")
             
             aesgcm = AESGCM(key)
             plaintext = aesgcm.decrypt(nonce, ciphertext, None)
-            logger.info("Data decrypted")
             return plaintext.decode('utf-8')
         
         except InvalidTag:

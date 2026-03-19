@@ -1,10 +1,14 @@
 """Authentication manager with secure password verification."""
-import logging
-import time
+import ctypes
+import hashlib
+import hmac
 import json
+import logging
+import os
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Tuple
-from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -22,263 +26,388 @@ class AuthenticationError(Exception):
 class AuthenticationManager:
     """
     Manages user authentication with master password.
-    Implements security controls: account lockout, rate limiting, secure verification.
+    Implements: account lockout, rate limiting, secure verification,
+    audit logging, HMAC integrity, and secure memory clearing.
     """
-    
-    MAX_ATTEMPTS = 5
-    LOCKOUT_DURATION = 300  # 5 minutes in seconds
-    
+
+    MAX_ATTEMPTS = 3
+    LOCKOUT_DURATION = 86400        # 24 hours
+    ATTEMPT_DELAY_BASE = 1.5        # seconds — progressive delay per failed attempt
+    HMAC_KEY = b"TMapp-auth-integrity-v1"
+
     def __init__(self, config_dir: Path):
-        """Initialize authentication manager."""
         self.config_dir = config_dir
         self.config_dir.mkdir(parents=True, exist_ok=True)
-        
+
         self.auth_file = self.config_dir / "auth.json"
-        self.failed_attempts = 0
-        self.lockout_until = None
+        self.audit_file = self.config_dir / "auth_audit.log"
+        self.lockout_until: Optional[float] = None
         self.encryption_key: Optional[bytes] = None
-        
+        self.failed_attempts: int = self._load_failed_attempts()
+
         logger.info("AuthenticationManager initialized")
-    
+
+    # ── Integrity ─────────────────────────────────────────────────────────────
+
+    def _compute_hmac(self, data: dict) -> str:
+        """Compute HMAC-SHA256 over auth data fields (excludes the hmac field itself)."""
+        payload = {k: v for k, v in sorted(data.items()) if k != "hmac"}
+        serialised = json.dumps(payload, sort_keys=True).encode("utf-8")
+        return hmac.new(self.HMAC_KEY, serialised, hashlib.sha256).hexdigest()
+
+    def _verify_hmac(self, data: dict) -> bool:
+        stored = data.get("hmac", "")
+        expected = self._compute_hmac(data)
+        return hmac.compare_digest(stored, expected)
+
+    def _write_auth_file(self, data: dict):
+        """Write auth data with HMAC and restricted permissions."""
+        data["hmac"] = self._compute_hmac(data)
+        with open(self.auth_file, "w") as f:
+            json.dump(data, f, indent=2)
+        if os.name != "nt":
+            os.chmod(self.auth_file, 0o600)
+
+    def _read_auth_file(self) -> dict:
+        """Read and verify auth file integrity."""
+        with open(self.auth_file, "r") as f:
+            data = json.load(f)
+        if not self._verify_hmac(data):
+            self._audit("TAMPER_DETECTED", "auth.json HMAC verification failed")
+            raise AuthenticationError("Auth file integrity check failed — possible tampering detected.")
+        return data
+
+    # ── Persistence helpers ───────────────────────────────────────────────────
+
+    def _load_failed_attempts(self) -> int:
+        try:
+            if not self.auth_file.exists():
+                return 0
+            data = self._read_auth_file()
+            return int(data.get("failed_attempts", 0))
+        except AuthenticationError:
+            raise
+        except (json.JSONDecodeError, OSError, ValueError) as e:
+            logger.warning("Could not load failed attempts: %s", e)
+            return 0
+
+    def _persist_state(self, extra: Optional[dict] = None):
+        """Persist failed_attempts (and any extra fields) atomically."""
+        try:
+            data = {}
+            if self.auth_file.exists():
+                with open(self.auth_file, "r") as f:
+                    data = json.load(f)
+            data["failed_attempts"] = self.failed_attempts
+            if extra:
+                data.update(extra)
+            self._write_auth_file(data)
+        except (OSError, json.JSONDecodeError) as e:
+            logger.error("Failed to persist auth state: %s", e)
+
+    # ── Audit log ─────────────────────────────────────────────────────────────
+
+    def _audit(self, event: str, detail: str = ""):
+        ts = datetime.now(timezone.utc).isoformat()
+        line = f"{ts} | {event} | {detail}\n"
+        try:
+            with open(self.audit_file, "a") as f:
+                f.write(line)
+            if os.name != "nt":
+                os.chmod(self.audit_file, 0o600)
+        except OSError as e:
+            logger.warning("Audit log write failed: %s", e)
+
+    # ── First run / setup ─────────────────────────────────────────────────────
+
     def is_first_run(self) -> bool:
-        """Check if this is first time setup."""
         return not self.auth_file.exists()
-    
-    def setup_master_password(self, password: str) -> Tuple[bool, str]:
-        """
-        Setup master password on first run.
-        
-        Args:
-            password: Master password to set
-            
-        Returns:
-            Tuple of (success, message)
-        """
-        # Validate password strength
+
+    def setup_master_password(self, password: str, totp_secret: Optional[str] = None) -> Tuple[bool, str]:
         is_valid, message = self.validate_password_strength(password)
         if not is_valid:
             return False, message
-        
+
         try:
-            # Use encryption service to derive and store
             from src.core.encryption import EncryptionService
             encryption = EncryptionService()
-            
-            # Derive key and get salt
             key, salt = encryption.derive_key(password)
-            
-            # Store authentication data
+
+            encryption._cached_key = key
+            encryption._cached_salt = salt
+            verification_token = encryption.encrypt("TMapp-verify-v1")
+
             auth_data = {
                 "salt": salt.hex(),
-                "created_at": datetime.now().isoformat(),
-                "version": "1.0"
+                "verification_token": verification_token,
+                "failed_attempts": 0,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "version": "2.0",
             }
-            
-            with open(self.auth_file, 'w') as f:
-                json.dump(auth_data, f, indent=2)
-            
-            # Secure file permissions (Unix-like systems)
-            import os
-            if os.name != 'nt':
-                os.chmod(self.auth_file, 0o600)
-            
+            if totp_secret:
+                auth_data["totp_secret"] = totp_secret
+            self._write_auth_file(auth_data)
+            self._audit("SETUP", "Master password configured")
             logger.info("Master password configured successfully")
             return True, "Password setup successful"
-        
-        except Exception as e:
-            logger.error(f"Failed to setup password: {e}")
-            return False, f"Setup failed: {str(e)}"
-    
+
+        except (OSError, ValueError) as e:
+            logger.error("Failed to setup password: %s", e)
+            return False, f"Setup failed: {e}"
+        finally:
+            _secure_clear_str(password)
+
+    # ── Verification ──────────────────────────────────────────────────────────
+
     def verify_master_password(self, password: str) -> Tuple[bool, bytes]:
-        """
-        Verify master password and derive encryption key.
-        
-        Args:
-            password: Password to verify
-            
-        Returns:
-            Tuple of (success, encryption_key or None)
-            
-        Raises:
-            AccountLockedError: If account is locked
-            AuthenticationError: If password is incorrect
-        """
-        # Check lockout status
+        """Verify master password. Raises AccountLockedError or AuthenticationError on failure."""
         if self.is_locked_out():
             remaining = self.get_lockout_remaining()
-            raise AccountLockedError(
-                f"Account locked due to failed attempts. Try again in {remaining} seconds."
-            )
-        
+            hours, minutes = remaining // 3600, (remaining % 3600) // 60
+            self._audit("LOGIN_BLOCKED", f"Locked — {hours}h {minutes}m remaining")
+            raise AccountLockedError(f"Account locked. Try again in {hours}h {minutes}m.")
+
         if not self.auth_file.exists():
             raise AuthenticationError("No password configured")
-        
+
         try:
-            # Load auth data
-            with open(self.auth_file, 'r') as f:
-                auth_data = json.load(f)
-            
+            auth_data = self._read_auth_file()
             salt = bytes.fromhex(auth_data["salt"])
-            
-            # Derive key using same salt
+            verification_token = auth_data.get("verification_token")
+
             from src.core.encryption import EncryptionService
             encryption = EncryptionService()
-            
-            try:
-                key, _ = encryption.derive_key(password, salt)
-                
-                # Success - clear failed attempts
-                self.failed_attempts = 0
-                self.encryption_key = key
-                
-                logger.info("Authentication successful")
-                return True, key
-            
-            except Exception as e:
-                # Failed attempt
-                self.failed_attempts += 1
-                
-                if self.failed_attempts >= self.MAX_ATTEMPTS:
-                    self.trigger_lockout()
-                    raise AccountLockedError(
-                        f"Too many failed attempts. Account locked for {self.LOCKOUT_DURATION} seconds."
+            key, _ = encryption.derive_key(password, salt)
+
+            if verification_token:
+                encryption._cached_key = key
+                encryption._cached_salt = salt
+                try:
+                    result = encryption.decrypt(verification_token)
+                    if not hmac.compare_digest(result, "TMapp-verify-v1"):
+                        raise ValueError("Token mismatch")
+                except (ValueError, Exception) as inner:
+                    # Apply progressive delay before responding
+                    delay = self.ATTEMPT_DELAY_BASE * self.failed_attempts
+                    if delay:
+                        time.sleep(min(delay, 10))
+
+                    self.failed_attempts += 1
+                    self._audit("LOGIN_FAILED", f"Attempt {self.failed_attempts}/{self.MAX_ATTEMPTS}")
+
+                    if self.failed_attempts >= self.MAX_ATTEMPTS:
+                        self._trigger_lockout()
+                        raise AccountLockedError(
+                            "Too many failed attempts. Account locked for 24 hours."
+                        )
+                    remaining_attempts = self.MAX_ATTEMPTS - self.failed_attempts
+                    self._persist_state()
+                    raise AuthenticationError(
+                        f"Incorrect password. {remaining_attempts} attempt(s) remaining."
                     )
-                
-                remaining_attempts = self.MAX_ATTEMPTS - self.failed_attempts
-                raise AuthenticationError(
-                    f"Invalid password. {remaining_attempts} attempts remaining."
-                )
-        
+
+            # Success
+            self.failed_attempts = 0
+            self._persist_state()
+            self.encryption_key = key
+            self._audit("LOGIN_SUCCESS")
+            logger.info("Authentication successful")
+            return True, key
+
         except (AccountLockedError, AuthenticationError):
             raise
-        except Exception as e:
-            logger.error(f"Authentication error: {e}")
-            raise AuthenticationError(f"Authentication failed: {str(e)}")
-    
-    def trigger_lockout(self):
-        """Lock account for specified duration."""
+        except (OSError, json.JSONDecodeError) as e:
+            logger.error("Auth file read error: %s", e)
+            raise AuthenticationError("Authentication failed: could not read credentials.")
+        except ValueError as e:
+            logger.error("Authentication value error: %s", e)
+            raise AuthenticationError(f"Authentication failed: {e}")
+        finally:
+            _secure_clear_str(password)
+
+    # ── Lockout ───────────────────────────────────────────────────────────────
+
+    def _trigger_lockout(self):
         self.lockout_until = time.time() + self.LOCKOUT_DURATION
-        logger.warning(
-            f"Account locked after {self.failed_attempts} failed attempts. "
-            f"Lockout duration: {self.LOCKOUT_DURATION} seconds"
-        )
-    
+        logger.warning("Account locked after %d failed attempts", self.failed_attempts)
+        self._audit("LOCKOUT", f"Locked for {self.LOCKOUT_DURATION}s")
+        self._persist_state({"lockout_until": self.lockout_until})
+
     def is_locked_out(self) -> bool:
-        """Check if account is currently locked."""
+        if self.lockout_until is None and self.auth_file.exists():
+            try:
+                with open(self.auth_file, "r") as f:
+                    data = json.load(f)
+                self.lockout_until = data.get("lockout_until")
+            except (OSError, json.JSONDecodeError) as e:
+                logger.warning("Could not read lockout state: %s", e)
+
         if self.lockout_until is None:
             return False
-        return time.time() < self.lockout_until
-    
+
+        if time.time() < self.lockout_until:
+            return True
+
+        # Lockout expired — clear it
+        self.lockout_until = None
+        self.failed_attempts = 0
+        self._audit("LOCKOUT_EXPIRED")
+        try:
+            with open(self.auth_file, "r") as f:
+                data = json.load(f)
+            data.pop("lockout_until", None)
+            data["failed_attempts"] = 0
+            self._write_auth_file(data)
+        except (OSError, json.JSONDecodeError) as e:
+            logger.error("Failed to clear lockout: %s", e)
+        return False
+
     def get_lockout_remaining(self) -> int:
-        """Get remaining lockout time in seconds."""
         if not self.is_locked_out():
             return 0
         return int(self.lockout_until - time.time())
-    
-    def validate_password_strength(self, password: str) -> Tuple[bool, str]:
-        """
-        Validate password meets security requirements.
-        
-        Requirements:
-        - At least 12 characters
-        - Contains uppercase letter
-        - Contains lowercase letter
-        - Contains digit
-        - Contains special character
-        
-        Args:
-            password: Password to validate
-            
-        Returns:
-            Tuple of (valid, message)
-        """
-        if len(password) < 12:
-            return False, "Password must be at least 12 characters"
-        
-        if len(password) > 128:
-            return False, "Password must not exceed 128 characters"
-        
-        has_upper = any(c.isupper() for c in password)
-        has_lower = any(c.islower() for c in password)
-        has_digit = any(c.isdigit() for c in password)
-        has_special = any(c in "!@#$%^&*()_+-=[]{}|;:,.<>?/~`" for c in password)
-        
-        missing = []
-        if not has_upper:
-            missing.append("uppercase letter")
-        if not has_lower:
-            missing.append("lowercase letter")
-        if not has_digit:
-            missing.append("digit")
-        if not has_special:
-            missing.append("special character")
-        
-        if missing:
-            return False, f"Password must contain: {', '.join(missing)}"
-        
-        # Check for common weak patterns
-        weak_patterns = ['password', '12345', 'qwerty', 'admin', 'letmein']
-        password_lower = password.lower()
-        for pattern in weak_patterns:
-            if pattern in password_lower:
-                return False, f"Password contains common weak pattern: {pattern}"
-        
-        return True, "Password meets requirements"
-    
-    def calculate_password_strength(self, password: str) -> int:
-        """
-        Calculate password strength score (0-100).
-        
-        Args:
-            password: Password to evaluate
-            
-        Returns:
-            Strength score from 0 (weak) to 100 (excellent)
-        """
-        if not password:
-            return 0
-        
-        strength = 0
-        
-        # Length scoring
-        if len(password) >= 8:
-            strength += 20
-        if len(password) >= 12:
-            strength += 20
-        if len(password) >= 16:
-            strength += 10
-        if len(password) >= 20:
-            strength += 10
-        
-        # Character variety
-        if any(c.islower() for c in password):
-            strength += 10
-        if any(c.isupper() for c in password):
-            strength += 10
-        if any(c.isdigit() for c in password):
-            strength += 10
-        if any(not c.isalnum() for c in password):
-            strength += 10
-        
-        return min(strength, 100)
-    
-    def get_stored_salt(self) -> Optional[bytes]:
-        """Get stored salt for key derivation."""
-        if not self.auth_file.exists():
-            return None
-        
+
+    # ── Helpers ───────────────────────────────────────────────────────────────
+
+    # ── MFA / TOTP recovery ───────────────────────────────────────────────────
+
+    def get_totp_secret(self) -> Optional[str]:
+        """Return the stored TOTP secret, or None if MFA was not configured."""
         try:
-            with open(self.auth_file, 'r') as f:
-                auth_data = json.load(f)
-            return bytes.fromhex(auth_data["salt"])
-        except Exception as e:
-            logger.error(f"Failed to retrieve salt: {e}")
+            if not self.auth_file.exists():
+                return None
+            data = self._read_auth_file()
+            return data.get("totp_secret")
+        except (OSError, json.JSONDecodeError, AuthenticationError):
             return None
-    
+
+    def verify_totp(self, code: str) -> bool:
+        """Return True if code matches the stored TOTP secret (±1 window)."""
+        secret = self.get_totp_secret()
+        if not secret:
+            return False
+        try:
+            import pyotp
+            return pyotp.TOTP(secret).verify(code.strip(), valid_window=1)
+        except Exception as e:
+            logger.error("TOTP verify error: %s", e)
+            return False
+
+    def reset_password_with_totp(self, totp_code: str, new_password: str) -> Tuple[bool, str]:
+        """Reset master password after verifying TOTP code."""
+        if not self.verify_totp(totp_code):
+            self._audit("RECOVERY_FAILED", "Invalid TOTP code")
+            return False, "Invalid recovery code."
+
+        is_valid, msg = self.validate_password_strength(new_password)
+        if not is_valid:
+            return False, msg
+
+        try:
+            from src.core.encryption import EncryptionService
+            enc = EncryptionService()
+            key, salt = enc.derive_key(new_password)
+            enc._cached_key = key
+            enc._cached_salt = salt
+            verification_token = enc.encrypt("TMapp-verify-v1")
+
+            # Preserve existing totp_secret
+            secret = self.get_totp_secret()
+            auth_data = {
+                "salt": salt.hex(),
+                "verification_token": verification_token,
+                "failed_attempts": 0,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "version": "2.0",
+            }
+            if secret:
+                auth_data["totp_secret"] = secret
+            self._write_auth_file(auth_data)
+            self.failed_attempts = 0
+            self.lockout_until = None
+            self._audit("RECOVERY_SUCCESS", "Password reset via TOTP")
+            return True, "Password reset successfully."
+        except (OSError, ValueError) as e:
+            logger.error("Password reset failed: %s", e)
+            return False, f"Reset failed: {e}"
+
+    def get_stored_salt(self) -> Optional[bytes]:
+        try:
+            if not self.auth_file.exists():
+                return None
+            data = self._read_auth_file()
+            return bytes.fromhex(data["salt"])
+        except (OSError, json.JSONDecodeError, KeyError, ValueError) as e:
+            logger.error("Failed to retrieve salt: %s", e)
+            return None
+
     def clear_encryption_key(self):
-        """Securely clear encryption key from memory."""
         if self.encryption_key:
-            # Overwrite with zeros
-            self.encryption_key = b'\x00' * len(self.encryption_key)
+            _zero_bytes(self.encryption_key)
             self.encryption_key = None
             logger.info("Encryption key cleared from memory")
+
+    def validate_password_strength(self, password: str) -> Tuple[bool, str]:
+        if len(password) < 12:
+            return False, "Password must be at least 12 characters"
+        if len(password) > 128:
+            return False, "Password must not exceed 128 characters"
+
+        missing = []
+        if not any(c.isupper() for c in password):
+            missing.append("uppercase letter")
+        if not any(c.islower() for c in password):
+            missing.append("lowercase letter")
+        if not any(c.isdigit() for c in password):
+            missing.append("digit")
+        if not any(c in "!@#$%^&*()_+-=[]{}|;:,.<>?/~`" for c in password):
+            missing.append("special character")
+        if missing:
+            return False, f"Password must contain: {', '.join(missing)}"
+
+        weak_patterns = [
+            "password", "12345", "qwerty", "admin", "letmein",
+            "welcome", "monkey", "dragon", "master", "login",
+            "abc123", "iloveyou", "sunshine", "princess", "shadow",
+        ]
+        lower = password.lower()
+        for pattern in weak_patterns:
+            if pattern in lower:
+                return False, f"Password contains a common weak pattern: '{pattern}'"
+
+        return True, "Password meets requirements"
+
+    def calculate_password_strength(self, password: str) -> int:
+        if not password:
+            return 0
+        score = 0
+        if len(password) >= 8:  score += 20
+        if len(password) >= 12: score += 20
+        if len(password) >= 16: score += 10
+        if len(password) >= 20: score += 10
+        if any(c.islower() for c in password):          score += 10
+        if any(c.isupper() for c in password):          score += 10
+        if any(c.isdigit() for c in password):          score += 10
+        if any(not c.isalnum() for c in password):      score += 10
+        return min(score, 100)
+
+
+# ── Secure memory utilities ───────────────────────────────────────────────────
+
+def _zero_bytes(b: bytes):
+    """Overwrite a bytes object in memory with zeros (best-effort)."""
+    try:
+        buf = (ctypes.c_char * len(b)).from_buffer(bytearray(b))
+        ctypes.memset(buf, 0, len(b))
+    except (TypeError, ValueError):
+        pass
+
+
+def _secure_clear_str(s: str):
+    """Best-effort overwrite of a string's internal buffer."""
+    try:
+        encoded = s.encode("utf-8")
+        buf = (ctypes.c_char * len(encoded)).from_buffer(bytearray(encoded))
+        ctypes.memset(buf, 0, len(encoded))
+    except (TypeError, ValueError):
+        pass
